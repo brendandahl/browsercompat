@@ -18,7 +18,7 @@ from .cache import Cache
 from .models import (
     Browser, Feature, Maturity, Section, Specification, Support, Version)
 from .serializers import (
-    BrowserSerializer, FeatureSerializer, MaturitySerializer,
+    BrowserSerializer, FieldMapMixin, FeatureSerializer, MaturitySerializer,
     SectionSerializer, SpecificationSerializer, SupportSerializer,
     VersionSerializer, omit_some)
 
@@ -62,7 +62,7 @@ view_cls_by_name = {
 }
 
 
-class ViewFeatureListSerializer(ModelSerializer):
+class ViewFeatureListSerializer(FieldMapMixin, ModelSerializer):
     """Get list of features"""
     url = SerializerMethodField()
 
