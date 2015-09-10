@@ -16,6 +16,16 @@ class APITestCase(BaseCase):
     """Add integration test helpers to APITestCase."""
     longMessage = True  # Display inequalities and message parameter
 
+    def create_via_json_api(self, url, data):
+        """Create instance via API."""
+        json_data = dumps(data)
+        content_type = 'application/vnd.api+json'
+        response = self.client.post(
+            url, data=json_data, content_type=content_type,
+            HTTP_ACCEPT='application/vnd.api+json')
+        self.assertEqual(201, response.status_code, response.data)
+        return response
+
     def get_via_json_api(self, url):
         """Get instance via API."""
         response = self.client.get(url, HTTP_ACCEPT='application/vnd.api+json')
@@ -148,6 +158,56 @@ class TestBrowserSerializer(APITestCase):
         expected_versions = [v.pk for v in (self.v1, self.v2)]
         actual_versions = response.data['versions']
         self.assertEqual(expected_versions, actual_versions)
+
+
+class TestFeatureSerializer(APITestCase):
+    """Test FeatureSerializer through the view."""
+    list_url = reverse('feature-list')
+
+    def setUp(self):
+        self.login_user()
+
+    def test_create_plain(self):
+        data = {
+            'features': {
+                'name': {'en': 'The Feature'},
+                'slug': 'the_feature'
+            }
+        }
+        response = self.create_via_json_api(self.list_url, data)
+        feature = Feature.objects.get(id=response.data['id'])
+        self.assertEqual('the_feature', feature.slug)
+
+    def test_create_with_sections(self):
+        maturity = self.create(
+            Maturity, slug='WD', name={'en': 'Working Draft'})
+        spec = self.create(
+            Specification, maturity=maturity, slug="css3-animations",
+            mdn_key='CSS3 Animations',
+            name={'en': "CSS Animations"},
+            uri={'en': 'http://dev.w3.org/csswg/css-animations/'})
+        s46 = self.create(
+            Section, specification=spec,
+            name={'en': "The 'animation-direction' property"},
+            subpath={'en': "#animation-direction"})
+        s45 = self.create(
+            Section, specification=spec,
+            name={'en': "The 'animation-iteration-count' property"},
+            subpath={'en': "#animation-iteration-count"})
+
+        data = {
+            'features': {
+                'name': {'en': 'The Feature'},
+                'slug': 'the_feature',
+                'links': {
+                    'sections': [str(s45.id), str(s46.id)]
+                }
+            }
+        }
+        response = self.create_via_json_api(self.list_url, data)
+        feature = Feature.objects.get(id=response.data['id'])
+        section_ids = [s.id for s in feature.sections.iterator()]
+        self.assertEqual(section_ids, [s45.id, s46.id])
 
 
 class TestSpecificationSerializer(APITestCase):
