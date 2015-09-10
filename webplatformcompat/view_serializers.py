@@ -18,36 +18,34 @@ from .cache import Cache
 from .models import (
     Browser, Feature, Maturity, Section, Specification, Support, Version)
 from .serializers import (
-    BrowserSerializer, FieldMapMixin, FeatureSerializer, MaturitySerializer,
+    BrowserSerializer, FeatureSerializer, MaturitySerializer,
     SectionSerializer, SpecificationSerializer, SupportSerializer,
-    VersionSerializer, omit_some)
+    VersionSerializer)
 
 
 class ViewBrowserSerializer(BrowserSerializer):
     class Meta(BrowserSerializer.Meta):
-        fields = omit_some(BrowserSerializer.Meta.fields, 'versions')
+        omit_fields = ('versions',)
 
 
 class ViewMaturitySerializer(MaturitySerializer):
     class Meta(MaturitySerializer.Meta):
-        fields = omit_some(MaturitySerializer.Meta.fields, 'specifications')
+        omit_fields = ('specifications',)
 
 
 class ViewSectionSerializer(SectionSerializer):
     class Meta(SectionSerializer.Meta):
-        fields = omit_some(SectionSerializer.Meta.fields, 'features')
+        omit_fields = ('features',)
 
 
 class ViewSpecificationSerializer(SpecificationSerializer):
     class Meta(SpecificationSerializer.Meta):
-        fields = omit_some(SpecificationSerializer.Meta.fields, 'sections')
+        omit_fields = ('sections',)
 
 
 class ViewVersionSerializer(VersionSerializer):
     class Meta(VersionSerializer.Meta):
-        fields = omit_some(VersionSerializer.Meta.fields, 'supports')
-        read_only_fields = omit_some(
-            VersionSerializer.Meta.read_only_fields, 'supports')
+        omit_fields = ('supports',)
 
 
 # Map resource names to model, view serializer classes
@@ -62,7 +60,7 @@ view_cls_by_name = {
 }
 
 
-class ViewFeatureListSerializer(FieldMapMixin, ModelSerializer):
+class ViewFeatureListSerializer(FeatureSerializer):
     """Get list of features"""
     url = SerializerMethodField()
 
@@ -73,9 +71,9 @@ class ViewFeatureListSerializer(FieldMapMixin, ModelSerializer):
 
     class Meta:
         model = Feature
-        fields = (
-            'url', 'id', 'slug', 'mdn_uri', 'experimental', 'standardized',
-            'stable', 'obsolete', 'name')
+        omit_fields = (
+            'sections', 'supports', 'parent', 'children', 'history_current',
+            'history')
 
 
 class DjangoResourceClient(object):
@@ -695,9 +693,6 @@ class ViewFeatureSerializer(FeatureSerializer):
 
     _view_extra = ViewFeatureExtraSerializer(source='*')
 
-    class Meta(FeatureSerializer.Meta):
-        fields = FeatureSerializer.Meta.fields + ('_view_extra',)
-
     def to_internal_value(self, data):
         self._in_extra = {
             'sections': data.pop('sections', []),
@@ -711,7 +706,7 @@ class ViewFeatureSerializer(FeatureSerializer):
         """Save the feature plus linked elements.
 
         The save is done using DRF conventions; the _view_extra field is set
-        to an object (FeatureExtra) that will same linked elements.  The only
+        to an object (FeatureExtra) that will save linked elements.  The only
         wrinkle is that the changeset should not be auto-closed by any saved
         items.
         """
@@ -726,10 +721,17 @@ class ViewFeatureSerializer(FeatureSerializer):
             changeset.save()
 
         ret = super(ViewFeatureSerializer, self).save(*args, **kwargs)
-        if hasattr(ret, '_view_extra'):
+        if ret._view_extra:
             ret._view_extra.save(*args, **kwargs)
 
         if close_changeset:
             changeset.closed = True
             changeset.save()
         return ret
+
+    def update(self, instance, validated_data):
+        """Update a feature, save linked elements for later."""
+        instance = super(ViewFeatureSerializer, self).update(
+            instance, validated_data)
+        instance._view_extra = validated_data.get('_view_extra', None)
+        return instance
