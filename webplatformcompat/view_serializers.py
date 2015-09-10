@@ -20,7 +20,7 @@ from .models import (
 from .serializers import (
     BrowserSerializer, FeatureSerializer, MaturitySerializer,
     SectionSerializer, SpecificationSerializer, SupportSerializer,
-    VersionSerializer)
+    VersionSerializer, Serializer)
 
 
 class ViewBrowserSerializer(BrowserSerializer):
@@ -62,15 +62,12 @@ view_cls_by_name = {
 
 class ViewFeatureListSerializer(FeatureSerializer):
     """Get list of features"""
-    url = SerializerMethodField()
-
     def get_url(self, obj):
         return reverse(
             'viewfeatures-detail', kwargs={'pk': obj.id},
             request=self.context['request'])
 
-    class Meta:
-        model = Feature
+    class Meta(FeatureSerializer.Meta):
         omit_fields = (
             'sections', 'supports', 'parent', 'children', 'history_current',
             'history')
@@ -365,7 +362,7 @@ class FeatureExtra(object):
             setattr(self.feature, attr, getattr(db_feature, attr))
 
 
-class ViewFeatureExtraSerializer(ModelSerializer):
+class ViewFeatureExtraSerializer(Serializer):
     """Linked resources and metadata for ViewFeatureSerializer."""
     browsers = ViewBrowserSerializer(source='all_browsers', many=True)
     features = FeatureSerializer(source='child_features', many=True)
@@ -683,7 +680,17 @@ class ViewFeatureExtraSerializer(ModelSerializer):
 
     class Meta:
         model = Feature
-        fields = (
+        fields = OrderedDict((
+            ('browsers', {}),
+            ('versions', {}),
+            ('supports', {}),
+            ('maturities', {}),
+            ('specifications', {}),
+            ('sections', {}),
+            ('features', {}),
+            ('meta', {}),
+        ))
+        old_fields = (
             'browsers', 'versions', 'supports', 'maturities',
             'specifications', 'sections', 'features', 'meta')
 
@@ -735,3 +742,7 @@ class ViewFeatureSerializer(FeatureSerializer):
             instance, validated_data)
         instance._view_extra = validated_data.get('_view_extra', None)
         return instance
+
+    class Meta(FeatureSerializer.Meta):
+        fields = FeatureSerializer.Meta.fields.copy()
+        fields['_view_extra'] = {}

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """API Serializers"""
 from __future__ import unicode_literals
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
 
 from django.contrib.auth.models import User
 from rest_framework.serializers import (
@@ -19,6 +19,10 @@ from .models import (
 from .validators import VersionAndStatusValidator
 
 
+class BaseMeta(object):
+    pass
+
+
 class Serializer(BaseSerializer):
     """Common serializer functionality
 
@@ -26,30 +30,82 @@ class Serializer(BaseSerializer):
     too few customization hooks.
     """
 
+    FIELD_TYPES = ('property', 'link', 'many', 'sorted', 'serializer field')
+    META_WRITABLE = ('always', 'never', 'at update', 'at create')
+
     def __init__(self, *args, **kwargs):
         """Initialize the Serializer"""
-        # Remove requested fields
-        omit_fields = set(getattr(self.Meta, 'omit_fields', []))
-        for field_name in omit_fields:
-            del self.fields[field_name]
-
-        # Modify fields based on the view
+        # Initialize fields from Meta and the action ('create', 'update', etc)
         view = kwargs.get('context', {}).get('view', None)
-        action = view and view.action
-        if action in ('list', 'create'):
-            update_only_fields = set(
-                getattr(self.Meta, 'update_only_fields', [])) - omit_fields
-            for field_name in update_only_fields:
-                self.fields[field_name].read_only = True
-
-        if action in ('update', 'partial_update'):
-            write_once_fields = set(
-                getattr(self.Meta, 'write_once_fields', [])) - omit_fields
-            for field_name in write_once_fields:
-                self.fields[field_name].read_only = True
+        self.action = view and view.action
+        self.init_fields_with_action(self.action)
 
         # Run standard DRF initialization
         super(Serializer, self).__init__(*args, **kwargs)
+
+    def init_fields_with_action(self, action):
+        """Merge Meta.fields with declared fields and view action."""
+        assert not hasattr(self, 'field_data')
+
+        # Remove omitted fields
+        omitted_fields = set(getattr(self.Meta, 'omit_fields', ()))
+        for field_name in omitted_fields:
+            del self.fields[field_name]
+
+        declared_fields = set(self.fields.keys())
+        meta_fields = set(self.Meta.fields.keys()) - omitted_fields
+        assert declared_fields == meta_fields, \
+            '%s != %s' % (sorted(declared_fields), sorted(meta_fields))
+
+        # Determine modification based on view action
+        mod_to_read_only = None
+        if action in ('list', 'create'):
+            mod_to_read_only = 'at update'
+        elif action in ('update', 'partial_update'):
+            mod_to_read_only = 'at create'
+
+        all_field_data = OrderedDict()
+        for name, field in self.fields.items():
+            metadata = self.Meta.fields[name]
+
+            # Validate that read_only / writable agree
+            default_writable = 'never' if field.read_only else 'always'
+            writable = metadata.get('writable', default_writable)
+            assert writable in self.META_WRITABLE
+            if writable == 'never':
+                assert getattr(field, 'read_only', True), writable
+            else:
+                assert not field.read_only
+                if writable == mod_to_read_only:
+                    field.read_only = True
+
+            # Create field data
+            field_data = {
+                'type': metadata.get('type', 'property'),
+                'writable': not getattr(field, 'read_only', True),
+                'archived': metadata.get('archived', True),
+            }
+
+            # Validate type
+            assert field_data['type'] in self.FIELD_TYPES
+            if field_data['type'] == 'sorted':
+                assert hasattr(self, 'update_' + name)
+
+            # Validate boolean fields
+            assert field_data['writable'] in (True, False)
+            assert field_data['archived'] in (True, False)
+
+            all_field_data[name] = field_data
+        self.field_data = all_field_data
+
+    @property
+    def writable_field_names(self):
+        """Return a dict of field types to a list of field names."""
+        write_names = defaultdict(list)
+        for name, field_data in self.field_data.items():
+            if field_data['writable']:
+                write_names[field_data['type']].append(name)
+        return write_names
 
     def validate_history_current(self, data):
         """Serialize historical data if requested."""
@@ -59,40 +115,58 @@ class Serializer(BaseSerializer):
         current_history = self.instance.history.all()[0]
         if data != current_history:
             self.historical_data = OrderedDict()
-            for field in self.Meta.archived_fields:
+            archived_fields = [
+                name for name, field_data in self.field_data.items()
+                if field_data['archived']]
+            for field in archived_fields:
                 self.historical_data[field] = getattr(data, field)
         return data
 
     def create(self, validated_data):
         """Create a new instance."""
-        update_only_fields = set(getattr(self.Meta, 'update_only_fields', []))
-        link_many_fields = set(getattr(self.Meta, 'link_many_fields', []))
-        omit_create_fields = update_only_fields.union(link_many_fields)
-        create_fields = dict([
-            (k, v) for k, v in validated_data.items()
-            if k not in omit_create_fields])
+        # Assemble all writable fields
+        write_names = self.writable_field_names
 
-        instance = self.Meta.model.objects.create(**create_fields)
-        for field in link_many_fields:
-            if field in validated_data:
-                setattr(instance, field, validated_data[field])
+        # API doesn't have all cases
+        assert not write_names['many']
+        assert not write_names['serializer field']
+
+        # Create the on-instance data
+        at_create_names = set(write_names['property'] + write_names['link'])
+        create_data = dict([
+            (k, v) for k, v in validated_data.items() if k in at_create_names])
+        instance = self.Meta.model.objects.create(**create_data)
+
+        # Create the sorted to-many relations
+        for name in write_names['sorted']:
+            if name in validated_data:
+                update_method = getattr(self, 'update_' + name)
+                update_method(name, instance, validated_data)
+
         return instance
 
     def update(self, instance, validated_data):
-        """Update an instance (generic code)."""
-        data = validated_data
-        if hasattr(self, 'historical_data'):
-            data = self.historical_data
-            data.update(validated_data)
+        """Update an instance."""
+        data = getattr(self, 'historical_data', {})
+        data.update(validated_data)
 
-        for field in getattr(self.Meta, 'writable_fields', []):
-            old_value = getattr(instance, field)
-            new_value = data.get(field, old_value)
+        write_names = self.writable_field_names
+
+        # Update the on-instance data
+        simple_updates = (
+            write_names['property'] + write_names['link'] +
+            write_names['many'])
+        for name in simple_updates:
+            old_value = getattr(instance, name, None)
+            new_value = data.get(name, old_value)
             if old_value != new_value:
-                setattr(instance, field, new_value)
-        for field in getattr(self.Meta, 'special_writable_fields', []):
-            updater = getattr(self, 'update_' + field)
-            updater(instance, validated_data)
+                setattr(instance, name, new_value)
+
+        # Update sorted relationships
+        for name in write_names['sorted']:
+            if name in data:
+                update_method = getattr(self, 'update_' + name)
+                update_method(name, instance, data)
 
         instance.save()
         return instance
@@ -119,21 +193,35 @@ class BrowserSerializer(Serializer):
     versions = PrimaryKeyRelatedField(
         many=True, queryset=Version.objects.all())
 
-    def update_versions(self, instance, data):
+    def update_versions(self, field, instance, validated_data):
         """Reorder versions."""
-        versions = data.get('versions')
+        versions = validated_data.get(field)
         if versions:
             v_pks = [v.pk for v in versions]
             current_order = instance.get_version_order()
             if v_pks != current_order:
                 instance.set_version_order(v_pks)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Browser
-        update_only_fields = ('history', 'history_current', 'versions')
-        write_once_fields = ('slug',)
-        archived_fields = writable_fields = ('slug', 'name', 'note')
-        special_writable_fields = ('versions',)
+        fields = OrderedDict((
+            ('id', {}),
+            ('slug', {
+                'writable': 'at create'}),
+            ('name', {}),
+            ('note', {}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+            ('versions', {
+                'type': 'sorted',
+                'writable': 'at update',
+                'archived': False}),
+        ))
 
 
 class FeatureSerializer(Serializer):
@@ -179,14 +267,39 @@ class FeatureSerializer(Serializer):
     history_current = CurrentHistoryField(read_only=None)
     history = HistoryField(many=True, read_only=True)
 
-    class Meta:
+    def update_sections(self, field, instance, validated_data):
+        """Reorder sections"""
+        new_values = validated_data.get(field)
+        if new_values:
+            new_pks = [value.pk for value in new_values]
+            current_pks = getattr(instance, field).values_list('pk', flat=True)
+            if new_pks != current_pks:
+                setattr(instance, field, new_values)
+
+    class Meta(BaseMeta):
         model = Feature
-        read_only_fields = ('supports',)
-        archived_fields = [
-            'slug', 'mdn_uri', 'experimental', 'standardized', 'stable',
-            'obsolete', 'name', 'parent']
-        writable_fields = archived_fields + ['sections']
-        link_many_fields = ('sections',)
+        fields = OrderedDict((
+            ('url', {'archived': False}),
+            ('id', {}),
+            ('slug', {'writable': 'at create'}),
+            ('mdn_uri', {}),
+            ('experimental', {}),
+            ('standardized', {}),
+            ('stable', {}),
+            ('obsolete', {}),
+            ('name', {}),
+            ('sections', {'type': 'sorted', 'archived': False}),
+            ('supports', {'type': 'many', 'archived': False}),
+            ('parent', {'type': 'link'}),
+            ('children', {'type': 'many', 'archived': False}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
         omit_fields = ('url',)
 
 
@@ -205,10 +318,22 @@ class MaturitySerializer(Serializer):
     history_current = CurrentHistoryField(read_only=None)
     history = HistoryField(many=True, read_only=True)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Maturity
-        read_only_fields = ('specifications',)
-        archived_fields = writable_fields = ('slug', 'name')
+        fields = OrderedDict((
+            ('id', {}),
+            ('slug', {}),
+            ('name', {}),
+            ('specifications', {
+                'archived': False}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
 
 
 class SectionSerializer(Serializer):
@@ -234,15 +359,29 @@ class SectionSerializer(Serializer):
         queryset=Specification.objects.all())
     features = PrimaryKeyRelatedField(
         default=[], many=True, queryset=Feature.objects.all())
-    history_current = CurrentHistoryField(read_only=None)
+    history_current = CurrentHistoryField(read_only=False)
     history = HistoryField(many=True, read_only=True)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Section
-        archived_fields = [
-            'number', 'name', 'subpath', 'note', 'specification']
-        writable_fields = archived_fields + ['features']
-        link_many_fields = ('features',)
+        fields = OrderedDict((
+            ('id', {}),
+            ('number', {}),
+            ('name', {}),
+            ('subpath', {}),
+            ('note', {}),
+            ('specification', {}),
+            ('features', {
+                'type': 'many',
+                'archived': False}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
 
 
 class SpecificationSerializer(Serializer):
@@ -265,20 +404,39 @@ class SpecificationSerializer(Serializer):
     history_current = CurrentHistoryField(read_only=None)
     history = HistoryField(many=True, read_only=True)
 
-    def update_sections(self, instance, data):
-        sections = data.get('sections')
+    def update_sections(self, field, instance, data):
+        sections = data.get(field)
         if sections:
             s_pks = [s.pk for s in sections]
             current_order = instance.get_section_order()
             if s_pks != current_order:
                 instance.set_section_order(s_pks)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Specification
-        update_only_fields = ('history', 'history_current', 'sections')
-        archived_fields = writable_fields = (
-            'slug', 'mdn_key', 'name', 'uri', 'maturity')
-        special_writable_fields = ('sections',)
+        fields = OrderedDict((
+            ('id', {}),
+            ('slug', {}),
+            ('mdn_key', {}),
+            ('name', {}),
+            ('uri', {}),
+            ('maturity', {}),
+            ('sections', {
+                'type': 'sorted',
+                'writable': 'at update',
+                'archived': False}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
+        # update_only_fields = ('history', 'history_current', 'sections')
+        # archived_fields = [
+        #    'slug', 'mdn_key', 'name', 'uri', 'maturity']
+        # writable_fields = archived_fields + ['sections']
 
 
 class SupportSerializer(Serializer):
@@ -322,12 +480,29 @@ class SupportSerializer(Serializer):
 
     # TODO: Unique together version/feature
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Support
-        archived_fields = writable_fields = (
-            'version', 'feature', 'support', 'prefix', 'prefix_mandatory',
-            'alternate_name', 'alternate_mandatory', 'requires_config',
-            'default_config', 'protected', 'note')
+        fields = OrderedDict((
+            ('id', {}),
+            ('version', {}),
+            ('feature', {}),
+            ('support', {}),
+            ('prefix', {}),
+            ('prefix_mandatory', {}),
+            ('alternate_name', {}),
+            ('alternate_mandatory', {}),
+            ('requires_config', {}),
+            ('default_config', {}),
+            ('protected', {}),
+            ('note', {}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
 
 
 class VersionSerializer(Serializer):
@@ -360,13 +535,33 @@ class VersionSerializer(Serializer):
     history = HistoryField(many=True, read_only=True)
     history_current = CurrentHistoryField(read_only=None)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Version
-        read_only_fields = ('supports',)
-        write_once_fields = ('version',)
-        archived_fields = writable_fields = (
-            'release_day', 'retirement_day',
-            'status', 'release_notes_uri', 'note')
+        fields = OrderedDict((
+            ('id', {}),
+            ('browser', {
+                'writable': 'at create',
+                'archived': False}),
+            ('version', {
+                'writable': 'at create',
+                'archived': False}),
+            ('release_day', {}),
+            ('retirement_day', {}),
+            ('status', {}),
+            ('release_notes_uri', {}),
+            ('note', {}),
+            ('order', {
+                'archived': False}),
+            ('supports', {
+                'archived': False}),
+            ('history_current', {
+                'type': 'serializer field',
+                'writable': 'at update',
+                'archived': False}),
+            ('history', {
+                'type': 'many',
+                'archived': False}),
+        ))
         validators = [VersionAndStatusValidator()]
 
 
@@ -395,17 +590,24 @@ class ChangesetSerializer(Serializer):
     historical_supports = PrimaryKeyRelatedField(many=True, read_only=True)
     historical_versions = PrimaryKeyRelatedField(many=True, read_only=True)
 
-    class Meta:
+    class Meta(BaseMeta):
         model = Changeset
-        write_once_fields = (
-            'user', 'target_resource_type', 'target_resource_id')
-        read_only_fields = (
-            'id', 'created', 'modified',
-            'historical_browsers', 'historical_features',
-            'historical_maturities', 'historical_sections',
-            'historical_specifications', 'historical_supports',
-            'historical_versions')
-        writable_fields = ('closed',)
+        fields = OrderedDict((
+            ('id', {}),
+            ('created', {}),
+            ('modified', {}),
+            ('closed', {}),
+            ('target_resource_type', {'writable': 'at create'}),
+            ('target_resource_id', {'writeable': 'at create'}),
+            ('user', {'writable': 'at create'}),
+            ('historical_browsers', {}),
+            ('historical_features', {}),
+            ('historical_maturities', {}),
+            ('historical_sections', {}),
+            ('historical_specifications', {}),
+            ('historical_supports', {}),
+            ('historical_versions', {}),
+        ))
 
 
 class UserSerializer(Serializer):
@@ -437,9 +639,16 @@ class UserSerializer(Serializer):
         assert hasattr(obj, 'group_names'), "Expecting cached User object"
         return obj.group_names
 
-    class Meta:
+    class Meta(BaseMeta):
         model = User
-        read_only_fields = ('username', 'changesets')
+        fields = OrderedDict((
+            ('id', {}),
+            ('username', {}),
+            ('created', {}),
+            ('agreement', {}),
+            ('permissions', {}),
+            ('changesets', {}),
+        ))
 
 
 #
@@ -502,8 +711,13 @@ class HistoricalObjectSerializer(Serializer):
 
         return data
 
-    class Meta:
-        fields = ('id', 'date', 'event', 'changeset')
+    class Meta(BaseMeta):
+        fields = OrderedDict((
+            ('id', {}),
+            ('date', {}),
+            ('event', {}),
+            ('changeset', {}),
+        ))
 
 
 class HistoricalBrowserSerializer(HistoricalObjectSerializer):
@@ -517,6 +731,11 @@ class HistoricalBrowserSerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Browser.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('browser', {}),
+            ('browsers', {}),
+        )))
 
 
 class HistoricalFeatureSerializer(HistoricalObjectSerializer):
@@ -534,6 +753,11 @@ class HistoricalFeatureSerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Feature.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('feature', {}),
+            ('features', {}),
+        )))
 
 
 class HistoricalMaturitySerializer(HistoricalObjectSerializer):
@@ -547,6 +771,11 @@ class HistoricalMaturitySerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Maturity.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('maturity', {}),
+            ('maturities', {}),
+        )))
 
 
 class HistoricalSectionSerializer(HistoricalObjectSerializer):
@@ -561,6 +790,11 @@ class HistoricalSectionSerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Section.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('section', {}),
+            ('sections', {}),
+        )))
 
 
 class HistoricalSpecificationSerializer(HistoricalObjectSerializer):
@@ -575,6 +809,11 @@ class HistoricalSpecificationSerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Specification.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('specification', {}),
+            ('specifications', {}),
+        )))
 
 
 class HistoricalSupportSerializer(HistoricalObjectSerializer):
@@ -589,6 +828,11 @@ class HistoricalSupportSerializer(HistoricalObjectSerializer):
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Support.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('support', {}),
+            ('supports', {}),
+        )))
 
 
 class HistoricalVersionSerializer(HistoricalObjectSerializer):
@@ -601,5 +845,10 @@ class HistoricalVersionSerializer(HistoricalObjectSerializer):
     version = HistoricalObjectField()
     versions = SerializerMethodField('get_archive')
 
-    class Meta(HistoricalObjectSerializer.Meta):
+    class Meta(BaseMeta):
         model = Version.history.model
+        fields = HistoricalObjectSerializer.Meta.fields.copy()
+        fields.update(OrderedDict((
+            ('version', {}),
+            ('versions', {}),
+        )))
