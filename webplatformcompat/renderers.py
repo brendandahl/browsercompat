@@ -1,24 +1,22 @@
 from collections import OrderedDict
 from json import loads
 
-from django.utils import encoding, six, translation
-from rest_framework.relations import ManyRelatedField
-from rest_framework.renderers import TemplateHTMLRenderer
-from rest_framework.serializers import ListSerializer
+from django.core.exceptions import NON_FIELD_ERRORS
+from django.core.urlresolvers import get_resolver
+from django.utils.encoding import force_text
+from django.utils.six import string_types
+from django.utils.six.moves.urllib.parse import urlparse, urlunparse
+from django.utils.translation import get_language
+from rest_framework.relations import (
+    HyperlinkedRelatedField, ManyRelatedField, PrimaryKeyRelatedField)
+from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
+from rest_framework.serializers import ListSerializer, ModelSerializer
+from rest_framework.settings import api_settings
+from rest_framework.status import is_client_error, is_server_error
 from rest_framework.utils.encoders import JSONEncoder
 from rest_framework.utils.serializer_helpers import ReturnList
 
-from .utils import model_from_obj, model_to_resource_type, snakecase
-
-#
-# rest_framework_json_api.renderers
-#
-
-from rest_framework import relations, renderers, serializers, status
-from rest_framework.settings import api_settings
-from django.core import urlresolvers
-from django.core.exceptions import NON_FIELD_ERRORS
-from django.utils.six.moves.urllib.parse import urlparse, urlunparse
+from .utils import model_from_obj, snakecase
 
 
 class WrapperNotApplicable(ValueError):
@@ -28,21 +26,26 @@ class WrapperNotApplicable(ValueError):
         return super(WrapperNotApplicable, self).__init__(*args, **kwargs)
 
 
-class JsonApiMixin(object):
+class JsonApiRenderer(JSONRenderer):
     convert_by_name = {
         'id': 'convert_to_text',
         api_settings.URL_FIELD_NAME: 'rename_to_href',
+        'meta': 'add_meta',
     }
 
     convert_by_type = {
-        relations.PrimaryKeyRelatedField: 'handle_related_field',
-        relations.HyperlinkedRelatedField: 'handle_url_field',
-        serializers.ModelSerializer: 'handle_nested_serializer',
+        PrimaryKeyRelatedField: 'handle_related_field',
+        HyperlinkedRelatedField: 'handle_url_field',
+        ModelSerializer: 'handle_nested_serializer',
+        ManyRelatedField: 'handle_related_field',
+        ListSerializer: 'handle_list_serializer',
     }
-    dict_class = dict
-    # encoder_class = encoders.JSONEncoder
+    dict_class = OrderedDict
+    encoder_class = JSONEncoder
     media_type = 'application/vnd.api+json'
     wrappers = [
+        'wrap_view_extra',
+        'wrap_view_extra_error',
         'wrap_empty_response',
         'wrap_parser_error',
         'wrap_field_error',
@@ -75,10 +78,54 @@ class JsonApiMixin(object):
                 data=data, renderer_context=renderer_context)
 
         renderer_context["indent"] = 4
-        return super(JsonApiMixin, self).render(
+        return super(JsonApiRenderer, self).render(
             data=wrapper,
             accepted_media_type=accepted_media_type,
             renderer_context=renderer_context)
+
+    def wrap_view_extra(self, data, renderer_context):
+        """Add nested data w/o adding links to main resource."""
+        if not (data and '_view_extra' in data):
+            raise WrapperNotApplicable('Not linked results')
+        response = renderer_context.get("response", None)
+        status_code = response and response.status_code
+        if status_code == 400:
+            raise WrapperNotApplicable('Status code must not be 400.')
+
+        linked = data.pop('_view_extra')
+        data.serializer.fields.pop('_view_extra')
+        wrapper = self.wrap_default(data, renderer_context)
+        assert 'linked' not in wrapper
+
+        wrapper_linked = self.wrap_default(linked, renderer_context)
+        to_transfer = ('links', 'linked', 'meta')
+        for key, value in wrapper_linked.items():
+            if key in to_transfer:
+                wrapper.setdefault(key, self.dict_class()).update(value)
+        return wrapper
+
+    def wrap_view_extra_error(self, data, renderer_context):
+        """Convert field errors involving _view_extra"""
+        response = renderer_context.get("response", None)
+        status_code = response and response.status_code
+        if status_code != 400:
+            raise WrapperNotApplicable('Status code must be 400.')
+        if not (data and '_view_extra' in data):
+            raise WrapperNotApplicable('Not linked results')
+
+        view_extra = data.pop('_view_extra')
+        assert isinstance(view_extra, dict)
+        converted = {}
+        for rname, error_dict in view_extra.items():
+            assert rname != 'meta'
+            for seq, errors in error_dict.items():
+                for fieldname, error in errors.items():
+                    name = 'linked.%s.%d.%s' % (rname, seq, fieldname)
+                    converted[name] = error
+        data.update(converted)
+
+        return self.wrap_error(
+            data, renderer_context, keys_are_fields=True, issue_is_title=False)
 
     def wrap_empty_response(self, data, renderer_context):
         """Pass-through empty responses
@@ -191,10 +238,7 @@ class JsonApiMixin(object):
         """
         response = renderer_context.get("response", None)
         status_code = response and response.status_code
-        is_error = (
-            status.is_client_error(status_code) or
-            status.is_server_error(status_code)
-        )
+        is_error = is_client_error(status_code) or is_server_error(status_code)
         if not is_error:
             raise WrapperNotApplicable("Status code must be 4xx or 5xx.")
 
@@ -221,7 +265,7 @@ class JsonApiMixin(object):
 
         errors = []
         for field, issues in data.items():
-            if isinstance(issues, six.string_types):
+            if isinstance(issues, string_types):
                 issues = [issues]
             for issue in issues:
                 error = self.dict_class()
@@ -266,7 +310,15 @@ class JsonApiMixin(object):
         resource_type = self.model_to_resource_type(model)
 
         # Use default wrapper for results
-        wrapper = self.wrap_default(data['results'], renderer_context)
+        # DRF 3.x - data['results'] is ReturnList
+        assert isinstance(data['results'], ReturnList)
+        results = []
+        fields = self.fields_from_resource(data['results'].serializer.child)
+        assert fields
+        for result in data['results']:
+            result.fields = fields
+            results.append(result)
+        wrapper = self.wrap_default(results, renderer_context)
 
         # Add pagination metadata
         pagination = self.dict_class()
@@ -344,15 +396,14 @@ class JsonApiMixin(object):
         linked = self.dict_class()
         meta = self.dict_class()
 
-        for field_name, field in six.iteritems(fields):
+        for field_name, field in fields.items():
             converted = None
             if field_name in self.convert_by_name:
                 converter_name = self.convert_by_name[field_name]
                 converter = getattr(self, converter_name)
                 converted = converter(resource, field, field_name, request)
             else:
-                for field_type, converter_name in \
-                        six.iteritems(self.convert_by_type):
+                for field_type, converter_name in self.convert_by_type.items():
                     if isinstance(field, field_type):
                         converter = getattr(self, converter_name)
                         converted = converter(
@@ -377,7 +428,7 @@ class JsonApiMixin(object):
 
     def convert_to_text(self, resource, field, field_name, request):
         data = self.dict_class()
-        data[field_name] = encoding.force_text(resource[field_name])
+        data[field_name] = force_text(resource[field_name])
         return {"data": data}
 
     def rename_to_href(self, resource, field, field_name, request):
@@ -385,10 +436,15 @@ class JsonApiMixin(object):
         data['href'] = resource[field_name]
         return {"data": data}
 
+    def add_meta(self, resource, field, field_name, request):
+        """Add metadata."""
+        data = resource[field_name]
+        return {'meta': data}
+
     def prepend_links_with_name(self, links, name):
         changed_links = links.copy()
 
-        for link_name, link_obj in six.iteritems(links):
+        for link_name, link_obj in links.items():
             if '.' in link_name:
                 # Link was already prepended with a resource name
                 continue
@@ -450,227 +506,6 @@ class JsonApiMixin(object):
         return {"linked_ids": linked_ids, "links": links, "linked": linked}
 
     def handle_related_field(self, resource, field, field_name, request):
-        links = self.dict_class()
-        linked_ids = self.dict_class()
-
-        model = self.model_from_obj(field)
-        resource_type = self.model_to_resource_type(model)
-
-        if field_name in resource:
-            links[field_name] = {
-                "type": resource_type,
-            }
-
-            if field.many:
-                link_data = [
-                    encoding.force_text(pk) for pk in resource[field_name]]
-            elif resource[field_name]:
-                link_data = encoding.force_text(resource[field_name])
-            else:
-                link_data = None
-
-            linked_ids[field_name] = link_data
-
-        return {"linked_ids": linked_ids, "links": links}
-
-    def handle_url_field(self, resource, field, field_name, request):
-        links = self.dict_class()
-        linked_ids = self.dict_class()
-
-        model = self.model_from_obj(field)
-        resource_type = self.model_to_resource_type(model)
-
-        links[field_name] = {
-            "href": self.url_to_template(field.view_name, request, field_name),
-            "type": resource_type,
-        }
-
-        if field_name in resource:
-            linked_ids[field_name] = self.url_to_pk(
-                resource[field_name], field)
-
-        return {"linked_ids": linked_ids, "links": links}
-
-    def url_to_pk(self, url_data, field):
-        if field.many:
-            obj_list = [field.from_native(url) for url in url_data]
-            return [encoding.force_text(obj.pk) for obj in obj_list]
-
-        if url_data:
-            obj = field.from_native(url_data)
-            return encoding.force_text(obj.pk)
-        else:
-            return None
-
-    def url_to_template(self, view_name, request, template_name):
-        resolver = urlresolvers.get_resolver(None)
-        info = resolver.reverse_dict[view_name]
-
-        path_template = info[0][0][0]
-        # FIXME: what happens when URL has more than one dynamic values?
-        # e.g. nested relations: manufacturer/%(id)s/cars/%(card_id)s
-        path = path_template % {info[0][0][1][0]: '{%s}' % template_name}
-
-        parsed_url = urlparse(request.build_absolute_uri())
-
-        return urlunparse(
-            [parsed_url.scheme, parsed_url.netloc, path, '', '', '']
-        )
-
-    def fields_from_resource(self, resource):
-        return getattr(resource, "fields", None)
-
-    def model_to_resource_type(self, model):
-        return model_to_resource_type(model)
-
-    def model_from_obj(self, obj):
-        return model_from_obj(obj)
-
-#
-# web-platform-compat stuff
-#
-
-
-class JsonApiRenderer(JsonApiMixin, renderers.JSONRenderer):
-    convert_by_name = JsonApiMixin.convert_by_name
-    convert_by_name.update({
-        'meta': 'add_meta',
-    })
-    convert_by_type = JsonApiMixin.convert_by_type
-    convert_by_type.update({
-        ManyRelatedField: 'handle_related_field',
-        ListSerializer: 'handle_list_serializer',
-    })
-    dict_class = OrderedDict
-    encoder_class = JSONEncoder
-    wrappers = ([
-        'wrap_view_extra',
-        'wrap_view_extra_error',
-    ] + JsonApiMixin.wrappers)
-
-    def add_meta(self, resource, field, field_name, request):
-        """Add metadata."""
-        data = resource[field_name]
-        return {'meta': data}
-
-    def wrap_paginated(self, data, renderer_context):
-        """Convert paginated data to JSON API with meta"""
-        pagination_keys = ['count', 'next', 'previous', 'results']
-        for key in pagination_keys:
-            if not (data and key in data):
-                raise WrapperNotApplicable('Not paginated results')
-
-        view = renderer_context.get("view", None)
-        model = self.model_from_obj(view)
-        resource_type = self.model_to_resource_type(model)
-
-        # Use default wrapper for results
-        # DRF 3.x - data['results'] is ReturnList
-        assert isinstance(data['results'], ReturnList)
-        results = []
-        fields = self.fields_from_resource(data['results'].serializer.child)
-        assert fields
-        for result in data['results']:
-            result.fields = fields
-            results.append(result)
-        wrapper = self.wrap_default(results, renderer_context)
-
-        # Add pagination metadata
-        pagination = self.dict_class()
-        pagination['previous'] = data['previous']
-        pagination['next'] = data['next']
-        pagination['count'] = data['count']
-        wrapper.setdefault('meta', self.dict_class())
-        wrapper['meta'].setdefault('pagination', self.dict_class())
-        wrapper['meta']['pagination'].setdefault(
-            resource_type, self.dict_class()).update(pagination)
-        return wrapper
-
-    def handle_list_serializer(self, resource, field, field_name, request):
-        serializer = field.child
-        model = serializer.Meta.model
-        resource_type = self.model_to_resource_type(model)
-
-        linked_ids = self.dict_class()
-        links = self.dict_class()
-        linked = self.dict_class()
-        linked[resource_type] = []
-
-        many = field.many
-        assert many
-        items = resource[field_name]
-
-        obj_ids = []
-        for item in items:
-            item.serializer = serializer
-            item.serializer.model = model
-            converted = self.convert_resource(item, request)
-            linked_obj = converted["data"]
-            converted_ids = converted.pop("linked_ids", {})
-            assert converted_ids
-            linked_obj["links"] = converted_ids
-            obj_ids.append(converted["data"]["id"])
-
-            field_links = self.prepend_links_with_name(
-                converted.get("links", {}), resource_type)
-            links.update(field_links)
-
-            linked[resource_type].append(linked_obj)
-
-        linked_ids[field_name] = obj_ids
-        return {"linked_ids": linked_ids, "links": links, "linked": linked}
-
-    def wrap_view_extra(self, data, renderer_context):
-        """Add nested data w/o adding links to main resource."""
-        if not (data and '_view_extra' in data):
-            raise WrapperNotApplicable('Not linked results')
-        response = renderer_context.get("response", None)
-        status_code = response and response.status_code
-        if status_code == 400:
-            raise WrapperNotApplicable('Status code must not be 400.')
-
-        linked = data.pop('_view_extra')
-        data.serializer.fields.pop('_view_extra')
-        wrapper = self.wrap_default(data, renderer_context)
-        assert 'linked' not in wrapper
-
-        wrapper_linked = self.wrap_default(linked, renderer_context)
-        to_transfer = ('links', 'linked', 'meta')
-        for key, value in wrapper_linked.items():
-            if key in to_transfer:
-                wrapper.setdefault(key, self.dict_class()).update(value)
-        return wrapper
-
-    def wrap_view_extra_error(self, data, renderer_context):
-        """Convert field errors involving _view_extra"""
-        response = renderer_context.get("response", None)
-        status_code = response and response.status_code
-        if status_code != 400:
-            raise WrapperNotApplicable('Status code must be 400.')
-        if not (data and '_view_extra' in data):
-            raise WrapperNotApplicable('Not linked results')
-
-        view_extra = data.pop('_view_extra')
-        assert isinstance(view_extra, dict)
-        converted = {}
-        for rname, error_dict in view_extra.items():
-            assert rname != 'meta'
-            for seq, errors in error_dict.items():
-                for fieldname, error in errors.items():
-                    name = 'linked.%s.%d.%s' % (rname, seq, fieldname)
-                    converted[name] = error
-        data.update(converted)
-
-        return self.wrap_error(
-            data, renderer_context, keys_are_fields=True, issue_is_title=False)
-
-    def model_to_resource_type(self, model):
-        if model:
-            return snakecase(model._meta.verbose_name_plural)
-        else:
-            return 'data'
-
-    def handle_related_field(self, resource, field, field_name, request):
         """Handle PrimaryKeyRelatedField
 
         Same as base handle_related_field, but:
@@ -707,7 +542,7 @@ class JsonApiRenderer(JsonApiMixin, renderers.JSONRenderer):
             if pk is None:
                 link_data.append(None)
             else:
-                link_data.append(encoding.force_text(pk))
+                link_data.append(force_text(pk))
 
         if many:
             linked_ids[field_name] = link_data
@@ -715,6 +550,96 @@ class JsonApiRenderer(JsonApiMixin, renderers.JSONRenderer):
             linked_ids[field_name] = link_data[0]
 
         return {"linked_ids": linked_ids, "links": links}
+
+    def handle_list_serializer(self, resource, field, field_name, request):
+        serializer = field.child
+        model = serializer.Meta.model
+        resource_type = self.model_to_resource_type(model)
+
+        linked_ids = self.dict_class()
+        links = self.dict_class()
+        linked = self.dict_class()
+        linked[resource_type] = []
+
+        many = field.many
+        assert many
+        items = resource[field_name]
+
+        obj_ids = []
+        for item in items:
+            item.serializer = serializer
+            item.serializer.model = model
+            converted = self.convert_resource(item, request)
+            linked_obj = converted["data"]
+            converted_ids = converted.pop("linked_ids", {})
+            assert converted_ids
+            linked_obj["links"] = converted_ids
+            obj_ids.append(converted["data"]["id"])
+
+            field_links = self.prepend_links_with_name(
+                converted.get("links", {}), resource_type)
+            links.update(field_links)
+
+            linked[resource_type].append(linked_obj)
+
+        linked_ids[field_name] = obj_ids
+        return {"linked_ids": linked_ids, "links": links, "linked": linked}
+
+    def handle_url_field(self, resource, field, field_name, request):
+        links = self.dict_class()
+        linked_ids = self.dict_class()
+
+        model = self.model_from_obj(field)
+        resource_type = self.model_to_resource_type(model)
+
+        links[field_name] = {
+            "href": self.url_to_template(field.view_name, request, field_name),
+            "type": resource_type,
+        }
+
+        if field_name in resource:
+            linked_ids[field_name] = self.url_to_pk(
+                resource[field_name], field)
+
+        return {"linked_ids": linked_ids, "links": links}
+
+    def url_to_pk(self, url_data, field):
+        if field.many:
+            obj_list = [field.from_native(url) for url in url_data]
+            return [force_text(obj.pk) for obj in obj_list]
+
+        if url_data:
+            obj = field.from_native(url_data)
+            return force_text(obj.pk)
+        else:
+            return None
+
+    def url_to_template(self, view_name, request, template_name):
+        resolver = get_resolver(None)
+        info = resolver.reverse_dict[view_name]
+
+        path_template = info[0][0][0]
+        # FIXME: what happens when URL has more than one dynamic values?
+        # e.g. nested relations: manufacturer/%(id)s/cars/%(card_id)s
+        path = path_template % {info[0][0][1][0]: '{%s}' % template_name}
+
+        parsed_url = urlparse(request.build_absolute_uri())
+
+        return urlunparse(
+            [parsed_url.scheme, parsed_url.netloc, path, '', '', '']
+        )
+
+    def fields_from_resource(self, resource):
+        if hasattr(resource, 'serializer'):
+            return getattr(resource.serializer, 'fields', None)
+        else:
+            return getattr(resource, 'fields', None)
+
+    def model_to_resource_type(self, model):
+        if model:
+            return snakecase(model._meta.verbose_name_plural)
+        else:
+            return 'data'
 
     def model_from_obj(self, obj):
         model = model_from_obj(obj)
@@ -730,12 +655,6 @@ class JsonApiRenderer(JsonApiMixin, renderers.JSONRenderer):
                 if not model:
                     model = type(getattr(instance, obj.source))
         return model
-
-    def fields_from_resource(self, resource):
-        if hasattr(resource, 'serializer'):
-            return getattr(resource.serializer, 'fields', None)
-        else:
-            return super(JsonApiRenderer, self).fields_from_resource(resource)
 
 
 class JsonApiTemplateHTMLRenderer(TemplateHTMLRenderer):
@@ -774,7 +693,7 @@ class JsonApiTemplateHTMLRenderer(TemplateHTMLRenderer):
 
         # Add language
         request = renderer_context['request']
-        lang = request.GET.get('lang', translation.get_language())
+        lang = request.GET.get('lang', get_language())
         context['lang'] = lang
 
         # Render HTML template w/ context

@@ -1,3 +1,5 @@
+from django.utils.encoding import force_text
+from django.utils.text import slugify
 from rest_framework.views import get_view_name as drf_get_view_name
 
 
@@ -7,13 +9,6 @@ def get_view_name(view_cls, suffix=None):
         return 'API Root'
     else:
         return name
-
-
-#
-# rest_framework_json_api.utils
-#
-from django.utils.encoding import force_text
-from django.utils.text import slugify
 
 
 def model_from_obj(obj):
@@ -41,21 +36,6 @@ def model_to_resource_type(model):
         return "data"
 
     return force_text(model._meta.verbose_name_plural)
-
-#
-# String conversion
-#
-
-
-def camelcase(string):
-    """Return a string in lowerCamelCase
-
-    Examples:
-    "people" -> "people"
-    "profile images" -> "profileImages"
-    """
-    out = slug(string).replace('-', ' ').title().replace(' ', '')
-    return out[0].lower() + out[1:]
 
 
 def slug(string):
