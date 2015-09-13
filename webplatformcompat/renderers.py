@@ -10,7 +10,7 @@ from django.utils.translation import get_language
 from rest_framework.relations import (
     HyperlinkedRelatedField, ManyRelatedField, PrimaryKeyRelatedField)
 from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
-from rest_framework.serializers import ListSerializer, ModelSerializer
+from rest_framework.serializers import ListSerializer
 from rest_framework.settings import api_settings
 from rest_framework.status import is_client_error, is_server_error
 from rest_framework.utils.encoders import JSONEncoder
@@ -26,7 +26,7 @@ class WrapperNotApplicable(ValueError):
         return super(WrapperNotApplicable, self).__init__(*args, **kwargs)
 
 
-class JsonApiRenderer(JSONRenderer):
+class JsonApiRC2Renderer(JSONRenderer):
     convert_by_name = {
         'id': 'convert_to_text',
         api_settings.URL_FIELD_NAME: 'rename_to_href',
@@ -36,7 +36,6 @@ class JsonApiRenderer(JSONRenderer):
     convert_by_type = {
         PrimaryKeyRelatedField: 'handle_related_field',
         HyperlinkedRelatedField: 'handle_url_field',
-        ModelSerializer: 'handle_nested_serializer',
         ManyRelatedField: 'handle_related_field',
         ListSerializer: 'handle_list_serializer',
     }
@@ -72,13 +71,13 @@ class JsonApiRenderer(JSONRenderer):
             else:
                 success = True
                 break
-        if not success:
+        if not success:  # pragma nocover
             raise WrapperNotApplicable(
                 'No acceptable wrappers found for response.',
                 data=data, renderer_context=renderer_context)
 
         renderer_context["indent"] = 4
-        return super(JsonApiRenderer, self).render(
+        return super(JsonApiRC2Renderer, self).render(
             data=wrapper,
             accepted_media_type=accepted_media_type,
             renderer_context=renderer_context)
@@ -152,12 +151,6 @@ class JsonApiRenderer(JSONRenderer):
             raise WrapperNotApplicable('Status code must be 400.')
         if list(data.keys()) != ['detail']:
             raise WrapperNotApplicable('Data must only have "detail" key.')
-
-        # Probably a parser error, unless `detail` is a valid field
-        view = renderer_context.get("view", None)
-        model = self.model_from_obj(view)
-        if 'detail' in model._meta.get_all_field_names():
-            raise WrapperNotApplicable()
 
         return self.wrap_error(
             data, renderer_context, keys_are_fields=False,
@@ -277,7 +270,8 @@ class JsonApiRenderer(JSONRenderer):
                     error["detail"] = issue
 
                 if keys_are_fields:
-                    if field in ('non_field_errors', NON_FIELD_ERRORS):
+                    non_field_names = ('non_field_errors', NON_FIELD_ERRORS)
+                    if field in non_field_names:  # pragma nocover
                         error["path"] = '/-'
                     else:
                         error["path"] = '/' + field
@@ -387,7 +381,7 @@ class JsonApiRenderer(JSONRenderer):
 
     def convert_resource(self, resource, request):
         fields = self.fields_from_resource(resource)
-        if not fields:
+        if not fields:  # pragma nocover
             raise WrapperNotApplicable('Items must have a fields attribute.')
 
         data = self.dict_class()
@@ -453,57 +447,13 @@ class JsonApiRenderer(JSONRenderer):
             prepended_template = "{%s}" % prepended_name
 
             updated_obj = changed_links[link_name]
-
-            if "href" in link_obj:
-                updated_obj["href"] = link_obj["href"].replace(
-                    link_template, prepended_template)
-
+            assert 'href' in link_obj
+            updated_obj["href"] = link_obj["href"].replace(
+                link_template, prepended_template)
             changed_links[prepended_name] = changed_links[link_name]
             del changed_links[link_name]
 
         return changed_links
-
-    def handle_nested_serializer(self, resource, field, field_name, request):
-        model = field.opts.model
-        resource_type = self.model_to_resource_type(model)
-
-        linked_ids = self.dict_class()
-        links = self.dict_class()
-        linked = self.dict_class()
-        linked[resource_type] = []
-
-        if field.many:
-            items = resource[field_name]
-        else:
-            items = [resource[field_name]]
-
-        obj_ids = []
-        for item in items:
-            converted = self.convert_resource(item, request)
-            linked_obj = converted["data"]
-            converted_ids = converted.pop("linked_ids", {})
-            if converted_ids:
-                linked_obj["links"] = converted_ids
-            obj_ids.append(converted["data"]["id"])
-
-            field_links = self.prepend_links_with_name(
-                converted.get("links", {}), resource_type)
-            if hasattr(field.opts, "view_name"):
-                field_links[field_name] = {
-                    "href": self.url_to_template(
-                        field.opts.view_name, request, field_name),
-                    "type": resource_type,
-                }
-            links.update(field_links)
-
-            linked[resource_type].append(linked_obj)
-
-        if field.many:
-            linked_ids[field_name] = obj_ids
-        else:
-            linked_ids[field_name] = obj_ids[0]
-
-        return {"linked_ids": linked_ids, "links": links, "linked": linked}
 
     def handle_related_field(self, resource, field, field_name, request):
         """Handle PrimaryKeyRelatedField
@@ -585,35 +535,6 @@ class JsonApiRenderer(JSONRenderer):
         linked_ids[field_name] = obj_ids
         return {"linked_ids": linked_ids, "links": links, "linked": linked}
 
-    def handle_url_field(self, resource, field, field_name, request):
-        links = self.dict_class()
-        linked_ids = self.dict_class()
-
-        model = self.model_from_obj(field)
-        resource_type = self.model_to_resource_type(model)
-
-        links[field_name] = {
-            "href": self.url_to_template(field.view_name, request, field_name),
-            "type": resource_type,
-        }
-
-        if field_name in resource:
-            linked_ids[field_name] = self.url_to_pk(
-                resource[field_name], field)
-
-        return {"linked_ids": linked_ids, "links": links}
-
-    def url_to_pk(self, url_data, field):
-        if field.many:
-            obj_list = [field.from_native(url) for url in url_data]
-            return [force_text(obj.pk) for obj in obj_list]
-
-        if url_data:
-            obj = field.from_native(url_data)
-            return force_text(obj.pk)
-        else:
-            return None
-
     def url_to_template(self, view_name, request, template_name):
         resolver = get_resolver(None)
         info = resolver.reverse_dict[view_name]
@@ -657,13 +578,13 @@ class JsonApiRenderer(JSONRenderer):
         return model
 
 
-class JsonApiTemplateHTMLRenderer(TemplateHTMLRenderer):
+class JsonApiRC2TemplateHTMLRenderer(TemplateHTMLRenderer):
     """Render to a template, but use JSON API format as context."""
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         """Generate JSON API representation, as well as collection."""
         # Set the context to the JSON API represention
-        json_api_renderer = JsonApiRenderer()
+        json_api_renderer = JsonApiRC2Renderer()
         json_api = json_api_renderer.render(
             data, accepted_media_type, renderer_context)
         context = loads(
@@ -697,5 +618,5 @@ class JsonApiTemplateHTMLRenderer(TemplateHTMLRenderer):
         context['lang'] = lang
 
         # Render HTML template w/ context
-        return super(JsonApiTemplateHTMLRenderer, self).render(
+        return super(JsonApiRC2TemplateHTMLRenderer, self).render(
             context, accepted_media_type, renderer_context)

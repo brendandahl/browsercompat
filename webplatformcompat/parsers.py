@@ -24,10 +24,8 @@ class JsonApiParser(JSONParser):
         if resource_type in data:
             resource = data[resource_type]
 
-        if isinstance(resource, list):  # pragma: nocover
-            resource = [self.convert_resource(r, view) for r in resource]
-        else:
-            resource = self.convert_resource(resource, view)
+        assert not isinstance(resource, list), "Lists not handled"
+        resource = self.convert_resource(resource, view)
 
         # Add extra data to _view_extra
         # This should mirror .renderers.JsonApiRenderer.wrap_view_extra
@@ -56,30 +54,8 @@ class JsonApiParser(JSONParser):
         for field_name, field in fields.items():
             if field_name not in links:
                 continue
-            if isinstance(field, HyperlinkedRelatedField):
-
-                if field.many:
-                    pks = links[field_name]
-                    model = field.queryset.model
-
-                    resource[field_name] = []
-
-                    for pk in pks:
-                        obj = model(pk=pk)
-                        url = field.to_native(obj)
-
-                        resource[field_name].append(url)
-                else:
-                    pk = links[field_name]
-                    model = field.queryset.model
-
-                    obj = model(pk=pk)
-
-                    url = field.to_native(obj)
-
-                    resource[field_name] = url
-            else:
-                resource[field_name] = links[field_name]
+            assert not isinstance(field, HyperlinkedRelatedField)
+            resource[field_name] = links[field_name]
 
         return resource
 

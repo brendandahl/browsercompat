@@ -2,16 +2,19 @@
 # -*- coding: utf-8 -*-
 """Tests for `web-platform-compat` renderers module."""
 
-from django.test import TestCase
+from json import loads
+
+from django.core.urlresolvers import reverse
 
 from webplatformcompat.models import Browser
-from webplatformcompat.renderers import JsonApiRenderer
+from webplatformcompat.renderers import JsonApiRC2Renderer
+from .base import TestCase
 
 
-class TestJsonApiRenderers(TestCase):
+class TestJsonApiRC2Renderers(TestCase):
 
     def setUp(self):
-        self.renderer = JsonApiRenderer()
+        self.renderer = JsonApiRC2Renderer()
 
     def test_model_to_resource_type(self):
         self.assertEqual(
@@ -22,3 +25,37 @@ class TestJsonApiRenderers(TestCase):
         self.assertEqual(
             'data',
             self.renderer.model_to_resource_type(None))
+
+    def test_options(self):
+        url = reverse('browser-list')
+        response = self.client.options(
+            url, HTTP_ACCEPT="application/vnd.api+json")
+        self.assertEqual(200, response.status_code, response.content)
+        expected_response = {
+            'meta': {
+                'name': 'Browser',
+                'description': '',
+                'renders': ['application/vnd.api+json', u'text/html'],
+                'parses': [
+                    'application/vnd.api+json',
+                    'application/x-www-form-urlencoded',
+                    'multipart/form-data']}}
+        self.assertEqual(expected_response, loads(response.content))
+
+    def test_parser_error(self):
+        data = "{'people': {'name': 'Jason Api'}}"  # Bad JSON, wrong quotes
+        self.login_user()
+        response = self.client.post(
+            reverse("browser-list"), data=data,
+            content_type="application/vnd.api+json")
+
+        self.assertEqual(400, response.status_code, response.content)
+        results = {
+            "errors": [{
+                "status": "400",
+                "detail": (
+                    "JSON parse error - Expecting property name enclosed in"
+                    " double quotes: line 1 column 2 (char 1)"),
+            }]
+        }
+        self.assertEqual(results, loads(response.content))
