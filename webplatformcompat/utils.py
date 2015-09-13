@@ -25,19 +25,6 @@ def model_from_obj(obj):
     return None
 
 
-def model_to_resource_type(model):
-    """Return the verbose plural form of a model name, with underscores
-
-    Examples:
-    Person -> "people"
-    ProfileImage -> "profile_image"
-    """
-    if model is None:
-        return "data"
-
-    return force_text(model._meta.verbose_name_plural)
-
-
 def slug(string):
     """Return a string where words are connected with hyphens"""
     return slugify(force_text(string))

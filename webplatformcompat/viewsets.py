@@ -16,7 +16,7 @@ from .mixins import PartialPutMixin
 from .models import (
     Browser, Feature, Maturity, Section, Specification, Support, Version)
 from .parsers import JsonApiParser
-from .renderers import JsonApiRenderer, JsonApiTemplateHTMLRenderer
+from .renderers import JsonApiRC2Renderer, JsonApiRC2TemplateHTMLRenderer
 from .serializers import (
     BrowserSerializer, FeatureSerializer, MaturitySerializer,
     SectionSerializer, SpecificationSerializer, SupportSerializer,
@@ -56,18 +56,18 @@ class CachedViewMixin(BaseCacheViewMixin):
 
 
 class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
-    renderer_classes = (JsonApiRenderer, BrowsableAPIRenderer)
+    renderer_classes = (JsonApiRC2Renderer, BrowsableAPIRenderer)
     parser_classes = (JsonApiParser, FormParser, MultiPartParser)
 
 
 class ReadOnlyModelViewSet(BaseROModelViewSet):
-    renderer_classes = (JsonApiRenderer, BrowsableAPIRenderer)
+    renderer_classes = (JsonApiRC2Renderer, BrowsableAPIRenderer)
 
 
 class UpdateOnlyModelViewSet(
         PartialPutMixin, CachedViewMixin, UpdateModelMixin,
         ReadOnlyModelViewSet):
-    renderer_classes = (JsonApiRenderer, BrowsableAPIRenderer)
+    renderer_classes = (JsonApiRC2Renderer, BrowsableAPIRenderer)
     parser_classes = (JsonApiParser, FormParser, MultiPartParser)
 
 
@@ -195,7 +195,8 @@ class ViewFeaturesViewSet(UpdateOnlyModelViewSet):
     filter_fields = ('slug',)
     parser_classes = (JsonApiParser, FormParser, MultiPartParser)
     renderer_classes = (
-        JsonApiRenderer, BrowsableAPIRenderer, JsonApiTemplateHTMLRenderer)
+        JsonApiRC2Renderer, BrowsableAPIRenderer,
+        JsonApiRC2TemplateHTMLRenderer)
     template_name = 'webplatformcompat/feature.basic.jinja2'
 
     def get_serializer_class(self):
