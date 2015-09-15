@@ -147,10 +147,15 @@ class BrowserSerializer(HistoricalModelSerializer):
             'slug': {
                 'writable': 'create_only',
             },
+            'history': {
+                'archive': 'omit',
+            },
             'history_current': {
+                'archive': 'omit',
                 'writable': 'update_only',
             },
             'versions': {
+                'archive': 'omit',
                 'writable': 'update_only',
             }
         }
@@ -174,6 +179,24 @@ class FeatureSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
+        bc_extra = {
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
+            },
+            'sections': {
+                'archive': 'omit',
+            },
+            'supports': {
+                'archive': 'omit',
+            },
+            'children': {
+                'archive': 'omit',
+            }
+        }
 
 
 class MaturitySerializer(HistoricalModelSerializer):
@@ -185,6 +208,18 @@ class MaturitySerializer(HistoricalModelSerializer):
             'id', 'slug', 'name', 'specifications',
             'history_current', 'history')
         read_only_fields = ('specifications',)
+        bc_extra = {
+            'specifications': {
+                'archive': 'omit',
+            },
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
+            }
+        }
 
 
 class SectionSerializer(HistoricalModelSerializer):
@@ -198,6 +233,18 @@ class SectionSerializer(HistoricalModelSerializer):
         extra_kwargs = {
             'features': {
                 'default': []
+            }
+        }
+        bc_extra = {
+            'features': {
+                'archive': 'omit',
+            },
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
             }
         }
 
@@ -228,6 +275,18 @@ class SpecificationSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
+        bc_extra = {
+            'sections': {
+                'archive': 'omit',
+            },
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
+            }
+        }
 
 
 class SupportSerializer(HistoricalModelSerializer):
@@ -240,6 +299,15 @@ class SupportSerializer(HistoricalModelSerializer):
             'prefix_mandatory', 'alternate_name', 'alternate_mandatory',
             'requires_config', 'default_config', 'protected', 'note',
             'history_current', 'history')
+        bc_extra = {
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
+            }
+        }
 
 
 class VersionSerializer(HistoricalModelSerializer):
@@ -264,6 +332,16 @@ class VersionSerializer(HistoricalModelSerializer):
         bc_extra = {
             "version": {
                 "writable": "create_only",
+            },
+            'supports': {
+                'archive': 'omit',
+            },
+            'history_current': {
+                'archive': 'omit',
+                'writable': 'update_only',
+            },
+            'history': {
+                'archive': 'omit',
             }
         }
 
@@ -359,6 +437,14 @@ class ArchiveMixin(object):
             field = fields[link_field]
             field.source = (field.source or link_field) + '_id'
 
+        # Delete fields to omit in archive
+        bc_extra = getattr(self.Meta, 'bc_extra', {})
+        for field_name, field in fields.items():
+            field_extra = bc_extra.get(field_name, {})
+            archive = field_extra.get('archive')
+            if archive == 'omit':
+                del fields[field_name]
+
         return fields
 
 
@@ -411,10 +497,7 @@ class HistoricalObjectSerializer(ModelSerializer):
 class HistoricalBrowserSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, BrowserSerializer):
-        class Meta(BrowserSerializer.Meta):
-            fields = omit_some(
-                BrowserSerializer.Meta.fields,
-                'history_current', 'history', 'versions')
+        pass
 
     browser = HistoricalObjectField()
     browsers = SerializerMethodField('get_archive')
@@ -429,10 +512,6 @@ class HistoricalFeatureSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, FeatureSerializer):
         class Meta(FeatureSerializer.Meta):
-            fields = omit_some(
-                FeatureSerializer.Meta.fields,
-                'history_current', 'history', 'sections', 'supports',
-                'children')
             read_only_fields = omit_some(
                 FeatureSerializer.Meta.read_only_fields, 'supports')
             archive_link_fields = ('parent',)
@@ -450,10 +529,7 @@ class HistoricalFeatureSerializer(HistoricalObjectSerializer):
 class HistoricalMaturitySerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, MaturitySerializer):
-        class Meta(MaturitySerializer.Meta):
-            fields = omit_some(
-                MaturitySerializer.Meta.fields,
-                'specifications', 'history_current', 'history')
+        pass
 
     maturity = HistoricalObjectField()
     maturities = SerializerMethodField('get_archive')
@@ -468,9 +544,6 @@ class HistoricalSectionSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, SectionSerializer):
         class Meta(SectionSerializer.Meta):
-            fields = omit_some(
-                SectionSerializer.Meta.fields,
-                'features', 'history_current', 'history')
             archive_link_fields = ('specification',)
 
     section = HistoricalObjectField()
@@ -486,9 +559,6 @@ class HistoricalSpecificationSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, SpecificationSerializer):
         class Meta(SpecificationSerializer.Meta):
-            fields = omit_some(
-                SpecificationSerializer.Meta.fields,
-                'sections', 'history_current', 'history')
             archive_link_fields = ('maturity',)
 
     specification = HistoricalObjectField()
@@ -504,8 +574,6 @@ class HistoricalSupportSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, SupportSerializer):
         class Meta(SupportSerializer.Meta):
-            fields = omit_some(
-                SupportSerializer.Meta.fields, 'history_current', 'history')
             archive_link_fields = ('version', 'feature')
 
     support = HistoricalObjectField()
