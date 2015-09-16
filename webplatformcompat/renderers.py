@@ -2,7 +2,7 @@ from collections import OrderedDict
 from json import loads
 
 from django.core.exceptions import NON_FIELD_ERRORS
-from django.core.urlresolvers import get_resolver
+from django.core.urlresolvers import get_resolver, reverse
 from django.utils.encoding import force_text
 from django.utils.six import string_types
 from django.utils.six.moves.urllib.parse import urlparse, urlunparse
@@ -578,13 +578,136 @@ class JsonApiRC2Renderer(JSONRenderer):
         return model
 
 
+class JsonApiV10Renderer(JSONRenderer):
+    """Use JSON API v1.0 specification"""
+    PAGINATION_KEYS = ('count', 'next', 'previous', 'results')
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        """
+        Convert native data to JSON API v1.0
+        """
+        request = renderer_context['request']
+        path = request.build_absolute_uri()
+
+        if not hasattr(data, 'extra'):
+            if hasattr(data, 'serializer'):
+                # Single object
+                data = data.serializer.add_repr_extra(data)
+                converted = self.convert_aware(data, renderer_context, path)
+            elif all([key in data for key in self.PAGINATION_KEYS]):
+                # Paginated object
+                converted = self.convert_paginated(
+                    data, renderer_context, path)
+        else:
+            # Already-aware single object
+            converted = self.convert_aware(data, renderer_context, path)
+
+        renderer_context["indent"] = 4
+        return super(JsonApiV10Renderer, self).render(
+            data=converted,
+            accepted_media_type=accepted_media_type,
+            renderer_context=renderer_context)
+
+    def pk_to_text(self, pk):
+        if pk is None:
+            return None
+        else:
+            return force_text(pk)
+
+    def convert_aware(self, data, renderer_context, path):
+        """
+        Convert data with .extra helper data
+        """
+        relationships = OrderedDict()
+        attributes = OrderedDict()
+        links = OrderedDict()
+        resource_id = None
+        resource_type = None
+
+        extra = data.extra
+        for name, value in data.items():
+            field_data = extra.get(name, {})
+            link_data = field_data.get('link')
+            if link_data:
+                link_type = link_data['type']
+                if name == 'id':
+                    links['self'] = path
+                    resource_id = self.pk_to_text(value)
+                    resource_type = link_type
+                else:
+                    relationship = OrderedDict()
+                    relationship['links'] = OrderedDict((
+                        ('self', path + '/relationships/' + link_type),
+                        ('related', path + '/' + link_type),
+                    ))
+                    if link_data['collection']:
+                        relationship['data'] = [
+                            {'type': link_type, 'id': self.pk_to_text(pk)}
+                            for pk in value]
+                    else:
+                        relationship['data'] = {
+                            'type': link_type, 'id': self.pk_to_text(value)}
+                    relationships[name] = relationship
+            else:
+                attributes[name] = value
+
+        out = OrderedDict()
+        if links:
+            out['links'] = links
+        out_data = OrderedDict((
+            ('type', resource_type),
+            ('id', resource_id),
+        ))
+        if attributes:
+            out_data['attributes'] = attributes
+        if relationships:
+            out_data['relationships'] = relationships
+        out['data'] = out_data
+        return out
+
+    def convert_paginated(self, data, renderer_context, path):
+        """
+        Convert paginated data
+        """
+        request = renderer_context['request']
+        extra = None
+        item_list = []
+        for item in data['results']:
+            if not extra:
+                if not hasattr(item, 'extra'):
+                    item.serializer.add_repr_extra(item)
+                extra = item.extra
+                item_type = extra['id']['link']['type']
+                singular = extra['id']['link'].get(
+                    'singular', item_type[:-1])
+                detail_name = "%s-detail" % singular
+            item_id = item['id']
+            subpath = request.build_absolute_uri(
+                reverse(detail_name, kwargs={'pk': item_id}))
+            item.extra = extra
+            converted = self.convert_aware(item, renderer_context, subpath)
+            item_list.append(converted)
+
+        out = OrderedDict()
+        links = OrderedDict((
+            ('self', path),
+            ('next', data.get('next', None)),
+            ('prev', data.get('previous', None)),
+        ))
+        out['links'] = links
+        out['data'] = item_list
+        return out
+
+
 class JsonApiRC2TemplateHTMLRenderer(TemplateHTMLRenderer):
     """Render to a template, but use JSON API format as context."""
+
+    json_api_renderer_class = JsonApiRC2Renderer
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         """Generate JSON API representation, as well as collection."""
         # Set the context to the JSON API represention
-        json_api_renderer = JsonApiRC2Renderer()
+        json_api_renderer = self.json_api_renderer_class()
         json_api = json_api_renderer.render(
             data, accepted_media_type, renderer_context)
         context = loads(
@@ -620,3 +743,9 @@ class JsonApiRC2TemplateHTMLRenderer(TemplateHTMLRenderer):
         # Render HTML template w/ context
         return super(JsonApiRC2TemplateHTMLRenderer, self).render(
             context, accepted_media_type, renderer_context)
+
+
+class JsonApiV10TemplateHTMLRenderer(TemplateHTMLRenderer):
+    """Render to a template, but use JSON API format as context."""
+
+    json_api_renderer_class = JsonApiV10Renderer

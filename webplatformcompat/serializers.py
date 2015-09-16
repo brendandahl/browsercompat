@@ -78,8 +78,18 @@ class FieldMapMixin(object):
         return field_class, field_kwargs
 
 
+class ReprExtraMixin(object):
+    def to_representation(self, instance):
+        ret = super(ReprExtraMixin, self).to_representation(instance)
+        return self.add_repr_extra(ret)
+
+    def add_repr_extra(self, ret):
+        ret.extra = getattr(self.Meta, 'bc_extra', {})
+        return ret
+
+
 class HistoricalModelSerializer(
-        WriteRestrictedMixin, FieldMapMixin, ModelSerializer):
+        WriteRestrictedMixin, FieldMapMixin, ReprExtraMixin, ModelSerializer):
     """Model serializer with history manager"""
 
     def build_property_field(self, field_name, model_class):
@@ -144,18 +154,35 @@ class BrowserSerializer(HistoricalModelSerializer):
             'id', 'slug', 'name', 'note', 'history', 'history_current',
             'versions')
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'browsers',
+                },
+            },
             'slug': {
                 'writable': 'create_only',
             },
             'history': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_browsers',
+                    'collection': True,
+                },
             },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_browsers',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'versions': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'versions',
+                    'collection': True,
+                },
                 'writable': 'update_only',
             }
         }
@@ -180,22 +207,53 @@ class FeatureSerializer(HistoricalModelSerializer):
             }
         }
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'features',
+                },
+            },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_features',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'history': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_features',
+                    'collection': True,
+                },
             },
             'sections': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'sections',
+                    'collection': True,
+                },
             },
             'supports': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'supports',
+                    'collection': True,
+                },
             },
             'children': {
                 'archive': 'omit',
-            }
+                'link': {
+                    'type': 'features',
+                    'collection': True,
+                },
+            },
+            'parent': {
+                'link': {
+                    'type': 'features',
+                    'collection': False,
+                },
+            },
         }
 
 
@@ -209,15 +267,33 @@ class MaturitySerializer(HistoricalModelSerializer):
             'history_current', 'history')
         read_only_fields = ('specifications',)
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'maturities',
+                    'singular': 'maturity',
+                },
+            },
             'specifications': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'specifications',
+                    'collection': True,
+                },
             },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_maturities',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'history': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_maturities',
+                    'collection': True,
+                },
             }
         }
 
@@ -236,16 +312,45 @@ class SectionSerializer(HistoricalModelSerializer):
             }
         }
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'sections',
+                },
+            },
             'features': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'features',
+                    'collection': True,
+                }
             },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_sections',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'history': {
                 'archive': 'omit',
-            }
+                'link': {
+                    'type': 'historical_sections',
+                    'collection': True,
+                },
+            },
+            'specification': {
+                'link': {
+                    'type': 'specifications',
+                    'collection': False,
+                },
+            },
+            'features': {
+                'link': {
+                    'type': 'features',
+                    'collection': True,
+                },
+            },
         }
 
 
@@ -276,15 +381,40 @@ class SpecificationSerializer(HistoricalModelSerializer):
             }
         }
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'specifications',
+                },
+            },
             'sections': {
                 'archive': 'omit',
             },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_specifications',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'history': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_specifications',
+                    'collection': True,
+                },
+            },
+            'maturity': {
+                'link': {
+                    'type': 'maturities',
+                    'collection': False,
+                },
+            },
+            'sections': {
+                'link': {
+                    'type': 'sections',
+                    'collection': True,
+                }
             }
         }
 
@@ -300,12 +430,37 @@ class SupportSerializer(HistoricalModelSerializer):
             'requires_config', 'default_config', 'protected', 'note',
             'history_current', 'history')
         bc_extra = {
+            'id': {
+                'link': {
+                    'type': 'supports',
+                },
+            },
+            'version': {
+                'link': {
+                    'type': 'versions',
+                    'collection': False,
+                },
+            },
+            'feature': {
+                'link': {
+                    'type': 'features',
+                    'collection': False,
+                },
+            },
             'history_current': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_supports',
+                    'collection': False,
+                },
                 'writable': 'update_only',
             },
             'history': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'historical_supports',
+                    'collection': True,
+                },
             }
         }
 
@@ -330,18 +485,41 @@ class VersionSerializer(HistoricalModelSerializer):
         # write_once_fields = ('version',)
         validators = [VersionAndStatusValidator()]
         bc_extra = {
+            "id": {
+                "link": {
+                    "type": "versions"
+                },
+            },
+            "browser": {
+                "link": {
+                    "type": "browsers",
+                    "collection": False,
+                },
+            },
             "version": {
                 "writable": "create_only",
             },
             'supports': {
                 'archive': 'omit',
+                "link": {
+                    "type": "versions",
+                    "collection": True,
+                },
             },
             'history_current': {
                 'archive': 'omit',
                 'writable': 'update_only',
+                "link": {
+                    "type": "historical_versions",
+                    "collection": False,
+                },
             },
             'history': {
                 'archive': 'omit',
+                "link": {
+                    "type": "historical_versions",
+                    "collection": True,
+                },
             }
         }
 
@@ -350,7 +528,7 @@ class VersionSerializer(HistoricalModelSerializer):
 # Change control object serializers
 #
 
-class ChangesetSerializer(ModelSerializer):
+class ChangesetSerializer(ReprExtraMixin, ModelSerializer):
     """Changeset Serializer"""
 
     target_resource_type = OptionalCharField(required=False)
@@ -379,19 +557,70 @@ class ChangesetSerializer(ModelSerializer):
             }
         }
         bc_extra = {
+            "id": {
+                "link": {
+                    "type": "changesets",
+                },
+            },
             "user": {
                 "writable": "update_only",
+                "link": {
+                    "type": "users",
+                    "collection": False,
+                },
             },
             "target_resource_type": {
                 "writable": "update_only",
             },
             "target_resource_id": {
                 "writable": "update_only",
-            }
+            },
+            "historical_browsers": {
+                "link": {
+                    "type": "historical_browsers",
+                    "collection": True,
+                },
+            },
+            "historical_features": {
+                "link": {
+                    "type": "historical_features",
+                    "collection": True,
+                },
+            },
+            'historical_maturities': {
+                "link": {
+                    "type": 'historical_maturities',
+                    "collection": True,
+                },
+            },
+            'historical_specifications': {
+                "link": {
+                    "type": 'historical_specifications',
+                    "collection": True,
+                },
+            },
+            'historical_sections': {
+                "link": {
+                    "type": 'historical_sections',
+                    "collection": True,
+                },
+            },
+            'historical_supports': {
+                "link": {
+                    "type": 'historical_supports',
+                    "collection": True,
+                },
+            },
+            'historical_versions': {
+                "link": {
+                    "type": 'historical_versions',
+                    "collection": True,
+                },
+            },
         }
 
 
-class UserSerializer(ModelSerializer):
+class UserSerializer(ReprExtraMixin, ModelSerializer):
     """User Serializer"""
 
     created = DateTimeField(source='date_joined', read_only=True)
@@ -420,7 +649,19 @@ class UserSerializer(ModelSerializer):
             'id', 'username', 'created', 'agreement', 'permissions',
             'changesets')
         read_only_fields = ('username', 'changesets')
-
+        bc_extra = {
+            "id": {
+                "link": {
+                    "type": "users"
+                },
+            },
+            "changesets": {
+                "link": {
+                    "type": "changesets",
+                    "collection": True,
+                }
+            },
+        }
 
 #
 # Historical object serializers
@@ -448,7 +689,7 @@ class ArchiveMixin(object):
         return fields
 
 
-class HistoricalObjectSerializer(ModelSerializer):
+class HistoricalObjectSerializer(ReprExtraMixin, ModelSerializer):
     """Common serializer attributes for Historical models"""
 
     id = IntegerField(source="history_id")
@@ -492,6 +733,19 @@ class HistoricalObjectSerializer(ModelSerializer):
 
     class Meta:
         fields = ('id', 'date', 'event', 'changeset')
+        extra = {
+            "id": {
+                "link": {
+                    "type": 'historical_browsers'
+                },
+            },
+            "changeset": {
+                "link": {
+                    "type": "changesets",
+                    "collection": False,
+                },
+            },
+        }
 
 
 class HistoricalBrowserSerializer(HistoricalObjectSerializer):

@@ -103,35 +103,68 @@ class GroupedRouter(DefaultRouter):
         return urls + redirect_urls
 
 
-router = GroupedRouter(trailing_slash=False, version='v1')
+routerv1 = GroupedRouter(trailing_slash=False, version='v1')
 
-router.register(r'browsers', BrowserViewSet, group='resources')
-router.register(r'versions', VersionViewSet, group='resources')
-router.register(r'features', FeatureViewSet, group='resources')
-router.register(r'supports', SupportViewSet, group='resources')
-router.register(r'specifications', SpecificationViewSet, group='resources')
-router.register(r'maturities', MaturityViewSet, group='resources')
-router.register(r'sections', SectionViewSet, group='resources')
+routerv1.register(r'browsers', BrowserViewSet, group='resources')
+routerv1.register(r'versions', VersionViewSet, group='resources')
+routerv1.register(r'features', FeatureViewSet, group='resources')
+routerv1.register(r'supports', SupportViewSet, group='resources')
+routerv1.register(r'specifications', SpecificationViewSet, group='resources')
+routerv1.register(r'maturities', MaturityViewSet, group='resources')
+routerv1.register(r'sections', SectionViewSet, group='resources')
 
-router.register(r'changesets', ChangesetViewSet, group='change_control')
-router.register(r'users', UserViewSet, group='change_control')
+routerv1.register(r'changesets', ChangesetViewSet, group='change_control')
+routerv1.register(r'users', UserViewSet, group='change_control')
 
-router.register(
+routerv1.register(
     r'historical_browsers', HistoricalBrowserViewSet, group='history')
-router.register(
+routerv1.register(
     r'historical_versions', HistoricalVersionViewSet, group='history')
-router.register(
+routerv1.register(
     r'historical_features', HistoricalFeatureViewSet, group='history')
-router.register(
+routerv1.register(
     r'historical_supports', HistoricalSupportViewSet, group='history')
-router.register(
+routerv1.register(
     r'historical_specifications', HistoricalSpecificationViewSet,
     group='history')
-router.register(
+routerv1.register(
     r'historical_maturities', HistoricalMaturityViewSet, group='history')
-router.register(
+routerv1.register(
     r'historical_sections', HistoricalSectionViewSet, group='history')
 
-router.register(
+routerv1.register(
+    r'view_features', ViewFeaturesViewSet, base_name='viewfeatures',
+    group='views')
+
+routerv2 = GroupedRouter(trailing_slash=False, version='v2')
+
+routerv2.register(r'browsers', BrowserViewSet, group='resources')
+routerv2.register(r'versions', VersionViewSet, group='resources')
+routerv2.register(r'features', FeatureViewSet, group='resources')
+routerv2.register(r'supports', SupportViewSet, group='resources')
+routerv2.register(r'specifications', SpecificationViewSet, group='resources')
+routerv2.register(r'maturities', MaturityViewSet, group='resources')
+routerv2.register(r'sections', SectionViewSet, group='resources')
+
+routerv2.register(r'changesets', ChangesetViewSet, group='change_control')
+routerv2.register(r'users', UserViewSet, group='change_control')
+
+routerv2.register(
+    r'historical_browsers', HistoricalBrowserViewSet, group='history')
+routerv2.register(
+    r'historical_versions', HistoricalVersionViewSet, group='history')
+routerv2.register(
+    r'historical_features', HistoricalFeatureViewSet, group='history')
+routerv2.register(
+    r'historical_supports', HistoricalSupportViewSet, group='history')
+routerv2.register(
+    r'historical_specifications', HistoricalSpecificationViewSet,
+    group='history')
+routerv2.register(
+    r'historical_maturities', HistoricalMaturityViewSet, group='history')
+routerv2.register(
+    r'historical_sections', HistoricalSectionViewSet, group='history')
+
+routerv2.register(
     r'view_features', ViewFeaturesViewSet, base_name='viewfeatures',
     group='views')
