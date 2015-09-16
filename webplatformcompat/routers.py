@@ -18,7 +18,8 @@ from .viewsets import (
     HistoricalMaturityViewSet, HistoricalSectionViewSet,
     HistoricalSpecificationViewSet, HistoricalSupportViewSet,
     HistoricalVersionViewSet,
-    ChangesetViewSet, UserViewSet, ViewFeaturesViewSet)
+    ChangesetViewSet, UserViewSet, ViewFeaturesViewSet,
+    VersionsByBrowserView)
 
 
 class GroupedRouter(DefaultRouter):

@@ -2,11 +2,14 @@
 
 from django.contrib.auth.models import User
 from django.http import Http404
+from rest_framework.decorators import detail_route
+from rest_framework.generics import ListAPIView
 from rest_framework.mixins import UpdateModelMixin
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.renderers import BrowsableAPIRenderer
 from rest_framework.viewsets import ModelViewSet as BaseModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet as BaseROModelViewSet
+from rest_framework.response import Response
 
 from drf_cached_instances.mixins import CachedViewMixin as BaseCacheViewMixin
 
@@ -79,6 +82,17 @@ class BrowserViewSet(ModelViewSet):
     queryset = Browser.objects.order_by('id')
     serializer_class = BrowserSerializer
     filter_fields = ('slug',)
+
+
+class VersionsByBrowserView(ListAPIView):
+    renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
+    parser_classes = (JsonApiParser, FormParser, MultiPartParser)
+    serializer_class = VersionSerializer
+    action = 'list'
+
+    def get_queryset(self):
+        browser_id = self.kwargs['pk']
+        return Version.objects.filter(browser_id=browser_id)
 
 
 class FeatureViewSet(ModelViewSet):
