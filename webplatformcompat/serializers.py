@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """API Serializers"""
 from collections import OrderedDict
+from copy import deepcopy
 
 from django.db.models import CharField
 from django.contrib.auth.models import User
@@ -270,7 +271,7 @@ class MaturitySerializer(HistoricalModelSerializer):
             'id': {
                 'link': {
                     'type': 'maturities',
-                    'singular': 'maturity',
+                    'pattern_name': 'maturity',
                 },
             },
             'specifications': {
@@ -707,6 +708,16 @@ class HistoricalObjectSerializer(ReprExtraMixin, ModelSerializer):
     def get_event(self, obj):
         return self.EVENT_CHOICES[obj.history_type]
 
+    def add_repr_extra(self, ret):
+        extra = deepcopy(getattr(self.Meta, 'fields_extra', {}))
+        archive_extra = deepcopy(getattr(self.Meta, 'archive_extra', {}))
+        extra.update(archive_extra)
+        extra['archive_data'] = {
+            'is_archive_of': self.ArchivedObject
+        }
+        ret.extra = extra
+        return ret
+
     def get_archive(self, obj):
         serializer = self.ArchivedObject(obj)
         data = serializer.data
@@ -733,12 +744,7 @@ class HistoricalObjectSerializer(ReprExtraMixin, ModelSerializer):
 
     class Meta:
         fields = ('id', 'date', 'event', 'changeset')
-        extra = {
-            "id": {
-                "link": {
-                    "type": 'historical_browsers'
-                },
-            },
+        fields_extra = {
             "changeset": {
                 "link": {
                     "type": "changesets",
@@ -754,12 +760,26 @@ class HistoricalBrowserSerializer(HistoricalObjectSerializer):
         pass
 
     browser = HistoricalObjectField()
-    browsers = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Browser.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'browser', 'browsers')
+            'browser', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_browsers',
+                    'pattern_name': 'historicalbrowser'
+                },
+            },
+            'browser': {
+                'link': {
+                    'type': 'browsers',
+                    'collection': False,
+                },
+            },
+        }
 
 
 class HistoricalFeatureSerializer(HistoricalObjectSerializer):
@@ -772,12 +792,26 @@ class HistoricalFeatureSerializer(HistoricalObjectSerializer):
             archive_cached_links_fields = ('sections',)
 
     feature = HistoricalObjectField()
-    features = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Feature.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'feature', 'features')
+            'feature', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_features',
+                    'pattern_name': 'historicalfeature'
+                },
+            },
+            'feature': {
+                'link': {
+                    'type': 'features',
+                    'collection': False,
+                },
+            },
+        }
 
 
 class HistoricalMaturitySerializer(HistoricalObjectSerializer):

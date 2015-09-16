@@ -614,6 +614,13 @@ class JsonApiV10Renderer(JSONRenderer):
         else:
             return force_text(pk)
 
+    def get_detail_name(self, item):
+        extra = item.extra
+        item_type = extra['id']['link']['type']
+        pattern_name = extra['id']['link'].get(
+            'pattern_name', item_type[:-1])
+        return "%s-detail" % pattern_name
+
     def convert_aware(self, data, renderer_context, path):
         """
         Convert data with .extra helper data
@@ -628,6 +635,7 @@ class JsonApiV10Renderer(JSONRenderer):
         for name, value in data.items():
             field_data = extra.get(name, {})
             link_data = field_data.get('link')
+            is_archive_of = field_data.get('is_archive_of')
             if link_data:
                 link_type = link_data['type']
                 if name == 'id':
@@ -648,6 +656,15 @@ class JsonApiV10Renderer(JSONRenderer):
                         relationship['data'] = {
                             'type': link_type, 'id': self.pk_to_text(value)}
                     relationships[name] = relationship
+            elif is_archive_of:
+                is_archive_of().add_repr_extra(value)
+                value.update(value.pop('links', {}))
+                detail_name = self.get_detail_name(value)
+                request = renderer_context['request']
+                subpath = request.build_absolute_uri(
+                    reverse(detail_name, kwargs={'pk': value['id']}))
+                attributes[name] = self.convert_aware(
+                    value, renderer_context, subpath)
             else:
                 attributes[name] = value
 
@@ -678,15 +695,17 @@ class JsonApiV10Renderer(JSONRenderer):
                     item.serializer.add_repr_extra(item)
                 extra = item.extra
                 item_type = extra['id']['link']['type']
-                singular = extra['id']['link'].get(
-                    'singular', item_type[:-1])
-                detail_name = "%s-detail" % singular
+                pattern_name = extra['id']['link'].get(
+                    'pattern_name', item_type[:-1])
+                detail_name = "%s-detail" % pattern_name
             item_id = item['id']
             subpath = request.build_absolute_uri(
                 reverse(detail_name, kwargs={'pk': item_id}))
             item.extra = extra
             converted = self.convert_aware(item, renderer_context, subpath)
-            item_list.append(converted)
+            item_data = OrderedDict((('links', converted['links']),))
+            item_data.update(converted['data'])
+            item_list.append(item_data)
 
         out = OrderedDict()
         links = OrderedDict((
