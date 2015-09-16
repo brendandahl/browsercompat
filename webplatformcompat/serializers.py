@@ -47,9 +47,9 @@ class WriteRestrictedMixin(object):
 
         # Set fields to read-only based on view action
         if set_to_readonly:
-            bc_extra = getattr(self.Meta, 'bc_extra', {})
+            fields_extra = getattr(self.Meta, 'fields_extra', {})
             for field_name, field in fields.items():
-                field_extra = bc_extra.get(field_name, {})
+                field_extra = fields_extra.get(field_name, {})
                 writable = field_extra.get('writable', True)
                 if writable == set_to_readonly:
                     assert not field.read_only
@@ -84,7 +84,7 @@ class ReprExtraMixin(object):
         return self.add_repr_extra(ret)
 
     def add_repr_extra(self, ret):
-        ret.extra = getattr(self.Meta, 'bc_extra', {})
+        ret.extra = getattr(self.Meta, 'fields_extra', {})
         return ret
 
 
@@ -153,7 +153,7 @@ class BrowserSerializer(HistoricalModelSerializer):
         fields = (
             'id', 'slug', 'name', 'note', 'history', 'history_current',
             'versions')
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'browsers',
@@ -206,7 +206,7 @@ class FeatureSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'features',
@@ -266,7 +266,7 @@ class MaturitySerializer(HistoricalModelSerializer):
             'id', 'slug', 'name', 'specifications',
             'history_current', 'history')
         read_only_fields = ('specifications',)
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'maturities',
@@ -311,7 +311,7 @@ class SectionSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'sections',
@@ -380,7 +380,7 @@ class SpecificationSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'specifications',
@@ -429,7 +429,7 @@ class SupportSerializer(HistoricalModelSerializer):
             'prefix_mandatory', 'alternate_name', 'alternate_mandatory',
             'requires_config', 'default_config', 'protected', 'note',
             'history_current', 'history')
-        bc_extra = {
+        fields_extra = {
             'id': {
                 'link': {
                     'type': 'supports',
@@ -484,7 +484,7 @@ class VersionSerializer(HistoricalModelSerializer):
         read_only_fields = ('supports',)
         # write_once_fields = ('version',)
         validators = [VersionAndStatusValidator()]
-        bc_extra = {
+        fields_extra = {
             "id": {
                 "link": {
                     "type": "versions"
@@ -556,7 +556,7 @@ class ChangesetSerializer(ReprExtraMixin, ModelSerializer):
                 'default': CurrentUserDefault()
             }
         }
-        bc_extra = {
+        fields_extra = {
             "id": {
                 "link": {
                     "type": "changesets",
@@ -649,7 +649,7 @@ class UserSerializer(ReprExtraMixin, ModelSerializer):
             'id', 'username', 'created', 'agreement', 'permissions',
             'changesets')
         read_only_fields = ('username', 'changesets')
-        bc_extra = {
+        fields_extra = {
             "id": {
                 "link": {
                     "type": "users"
@@ -679,9 +679,9 @@ class ArchiveMixin(object):
             field.source = (field.source or link_field) + '_id'
 
         # Delete fields to omit in archive
-        bc_extra = getattr(self.Meta, 'bc_extra', {})
+        fields_extra = getattr(self.Meta, 'fields_extra', {})
         for field_name, field in fields.items():
-            field_extra = bc_extra.get(field_name, {})
+            field_extra = fields_extra.get(field_name, {})
             archive = field_extra.get('archive')
             if archive == 'omit':
                 del fields[field_name]
