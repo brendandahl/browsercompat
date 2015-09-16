@@ -633,6 +633,8 @@ class JsonApiV10Renderer(JSONRenderer):
 
         extra = data.extra
         for name, value in data.items():
+            if name in ('history', 'history_current'):
+                continue
             field_data = extra.get(name, {})
             link_data = field_data.get('link')
             is_archive_of = field_data.get('is_archive_of')
