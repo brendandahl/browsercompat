@@ -54,7 +54,7 @@ SECRET_KEY - Overrides SECRET_KEY
 SECURE_PROXY_SSL_HEADER - "HTTP_X_FORWARDED_PROTOCOL,https" to enable
 SERVER_EMAIL - Email 'From' address for error messages to admins
 STATIC_ROOT - Overrides STATIC_ROOT
-
+PAGINATE_BY - Items per page, default 10
 """
 
 # Build paths inside the project like this: rel_path('folder', 'file')
@@ -288,9 +288,9 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
         'webplatformcompat.filters.UnorderedDjangoFilterBackend',
     ],
-    'PAGINATE_BY': 10,
+    'PAGINATE_BY': environ.get('PAGINATE_BY', 10),
     'PAGINATE_BY_PARAM': 'page_size',
-    'MAX_PAGINATE_BY': 100,
+    'MAX_PAGINATE_BY': max(100, environ.get('PAGINATE_BY', 10)),
 }
 
 # Django nose
