@@ -47,9 +47,9 @@ class WriteRestrictedMixin(object):
 
         # Set fields to read-only based on view action
         if set_to_readonly:
-            bc_extra = getattr(self.Meta, 'bc_extra', {})
+            fields_extra = getattr(self.Meta, 'fields_extra', {})
             for field_name, field in fields.items():
-                field_extra = bc_extra.get(field_name, {})
+                field_extra = fields_extra.get(field_name, {})
                 writable = field_extra.get('writable', True)
                 if writable == set_to_readonly:
                     assert not field.read_only
@@ -143,7 +143,7 @@ class BrowserSerializer(HistoricalModelSerializer):
         fields = (
             'id', 'slug', 'name', 'note', 'history', 'history_current',
             'versions')
-        bc_extra = {
+        fields_extra = {
             'slug': {
                 'writable': 'create_only',
             },
@@ -179,7 +179,7 @@ class FeatureSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'history_current': {
                 'archive': 'omit',
                 'writable': 'update_only',
@@ -208,7 +208,7 @@ class MaturitySerializer(HistoricalModelSerializer):
             'id', 'slug', 'name', 'specifications',
             'history_current', 'history')
         read_only_fields = ('specifications',)
-        bc_extra = {
+        fields_extra = {
             'specifications': {
                 'archive': 'omit',
             },
@@ -235,7 +235,7 @@ class SectionSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'features': {
                 'archive': 'omit',
             },
@@ -275,7 +275,7 @@ class SpecificationSerializer(HistoricalModelSerializer):
                 'default': []
             }
         }
-        bc_extra = {
+        fields_extra = {
             'sections': {
                 'archive': 'omit',
             },
@@ -299,7 +299,7 @@ class SupportSerializer(HistoricalModelSerializer):
             'prefix_mandatory', 'alternate_name', 'alternate_mandatory',
             'requires_config', 'default_config', 'protected', 'note',
             'history_current', 'history')
-        bc_extra = {
+        fields_extra = {
             'history_current': {
                 'archive': 'omit',
                 'writable': 'update_only',
@@ -329,7 +329,7 @@ class VersionSerializer(HistoricalModelSerializer):
         read_only_fields = ('supports',)
         # write_once_fields = ('version',)
         validators = [VersionAndStatusValidator()]
-        bc_extra = {
+        fields_extra = {
             "version": {
                 "writable": "create_only",
             },
@@ -378,7 +378,7 @@ class ChangesetSerializer(ModelSerializer):
                 'default': CurrentUserDefault()
             }
         }
-        bc_extra = {
+        fields_extra = {
             "user": {
                 "writable": "update_only",
             },
@@ -421,7 +421,6 @@ class UserSerializer(ModelSerializer):
             'changesets')
         read_only_fields = ('username', 'changesets')
 
-
 #
 # Historical object serializers
 #
@@ -438,9 +437,9 @@ class ArchiveMixin(object):
             field.source = (field.source or link_field) + '_id'
 
         # Delete fields to omit in archive
-        bc_extra = getattr(self.Meta, 'bc_extra', {})
+        fields_extra = getattr(self.Meta, 'fields_extra', {})
         for field_name, field in fields.items():
-            field_extra = bc_extra.get(field_name, {})
+            field_extra = fields_extra.get(field_name, {})
             archive = field_extra.get('archive')
             if archive == 'omit':
                 del fields[field_name]
