@@ -30,6 +30,6 @@ webplatformcompat_urlpatterns = patterns(
     url(r'^view_feature/(?P<feature_id>\d+)(.html)?$', ViewFeature.as_view(
         template_name='webplatformcompat/feature.js.jinja2'),
         name='view_feature'),
-    url(r'^api/v2/browsers/(?P<pk>\d+)/relationships/versions',
+    url(r'^api/v2/browsers/(?P<pk>\d+)/versions',
         VersionsByBrowserView.as_view()),
 )
