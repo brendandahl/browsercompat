@@ -581,6 +581,7 @@ class JsonApiRC2Renderer(JSONRenderer):
 class JsonApiV10Renderer(JSONRenderer):
     """Use JSON API v1.0 specification"""
     PAGINATION_KEYS = ('count', 'next', 'previous', 'results')
+    media_type = 'application/vnd.api+json'
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         """
@@ -598,6 +599,9 @@ class JsonApiV10Renderer(JSONRenderer):
                 # Paginated object
                 converted = self.convert_paginated(
                     data, renderer_context, path)
+            else:
+                # Errors
+                converted = data
         else:
             # Already-aware single object
             converted = self.convert_aware(data, renderer_context, path)
