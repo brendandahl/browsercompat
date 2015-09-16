@@ -2,7 +2,7 @@ from rest_framework.filters import DjangoFilterBackend
 
 
 class UnorderedDjangoFilterBackend(DjangoFilterBackend):
-    """DjangoFilterBackend without ordering"""
+    """DjangoFilterBackend without ordering and with override"""
 
     def get_filter_class(self, view, queryset=None):
         """
@@ -24,3 +24,16 @@ class UnorderedDjangoFilterBackend(DjangoFilterBackend):
             return AutoFilterSet
 
         return None  # pragma: no cover
+
+    def filter_queryset(self, request, queryset, view):
+        """
+        Filter the queryset by the request and initialization
+
+        filter by initialization is used by the resource actions.
+        """
+        filter_class = self.get_filter_class(view, queryset)
+
+        if filter_class:
+            query_params = request.query_params.dict()
+            query_params.update(view.kwargs.get('apply_filter', {}))
+            return filter_class(query_params, queryset=queryset).qs

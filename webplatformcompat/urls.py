@@ -4,7 +4,6 @@ from mdn.urls import mdn_urlpatterns
 from webplatformcompat.routers import routerv1, routerv2
 
 from .views import RequestView, ViewFeature
-from .viewsets import VersionsByBrowserView
 
 
 webplatformcompat_urlpatterns = patterns(
@@ -30,6 +29,4 @@ webplatformcompat_urlpatterns = patterns(
     url(r'^view_feature/(?P<feature_id>\d+)(.html)?$', ViewFeature.as_view(
         template_name='webplatformcompat/feature.js.jinja2'),
         name='view_feature'),
-    url(r'^api/v2/browsers/(?P<pk>\d+)/versions',
-        VersionsByBrowserView.as_view()),
 )

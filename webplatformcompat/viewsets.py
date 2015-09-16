@@ -83,16 +83,10 @@ class BrowserViewSet(ModelViewSet):
     serializer_class = BrowserSerializer
     filter_fields = ('slug',)
 
-
-class VersionsByBrowserView(ListAPIView):
-    renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
-    parser_classes = (JsonApiParser, FormParser, MultiPartParser)
-    serializer_class = VersionSerializer
-    action = 'list'
-
-    def get_queryset(self):
-        browser_id = self.kwargs['pk']
-        return Version.objects.filter(browser_id=browser_id)
+    @detail_route()
+    def versions(self, request, pk=None):
+        versions_vs = VersionViewSet.as_view({'get': 'list'})
+        return versions_vs(request, apply_filter={'browser': pk})
 
 
 class FeatureViewSet(ModelViewSet):
