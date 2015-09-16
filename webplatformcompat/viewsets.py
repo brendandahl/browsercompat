@@ -85,8 +85,8 @@ class BrowserViewSet(ModelViewSet):
 
     @detail_route()
     def versions(self, request, pk=None):
-        versions_vs = VersionViewSet.as_view({'get': 'list'})
-        return versions_vs(request, apply_filter={'browser': pk})
+        related_view = VersionViewSet.as_view({'get': 'list'})
+        return related_view(request, apply_filter={'browser': pk})
 
 
 class FeatureViewSet(ModelViewSet):
@@ -102,16 +102,38 @@ class FeatureViewSet(ModelViewSet):
                 qs = qs.filter(parent=None)
         return qs
 
+    @detail_route()
+    def sections(self, request, pk=None):
+        related_view = SectionViewSet.as_view({'get': 'list'})
+        return related_view(request, apply_filter={'features': pk})
+
+    @detail_route()
+    def supports(self, request, pk=None):
+        related_view = SupportViewSet.as_view({'get': 'list'})
+        return related_view(request, apply_filter={'feature': pk})
+
 
 class MaturityViewSet(ModelViewSet):
     queryset = Maturity.objects.order_by('id')
     serializer_class = MaturitySerializer
     filter_fields = ('slug',)
 
+    @detail_route()
+    def specifications(self, request, pk=None):
+        related_view = SpecificationViewSet.as_view({'get': 'list'})
+        return related_view(request, apply_filter={'maturity': pk})
+
 
 class SectionViewSet(ModelViewSet):
     queryset = Section.objects.order_by('id')
     serializer_class = SectionSerializer
+    filter_fields = ('features',)
+
+    @detail_route()
+    def specification(self, request, pk=None):
+        obj = self.get_object()
+        related_view = SpecificationViewSet.as_view({'get': 'retrieve'})
+        return related_view(request, pk=obj.specification_id)
 
 
 class SpecificationViewSet(ModelViewSet):
@@ -119,11 +141,29 @@ class SpecificationViewSet(ModelViewSet):
     serializer_class = SpecificationSerializer
     filter_fields = ('slug', 'mdn_key')
 
+    @detail_route()
+    def maturity(self, request, pk=None):
+        obj = self.get_object()
+        related_view = MaturityViewSet.as_view({'get': 'retrieve'})
+        return related_view(request, pk=obj.maturity_id)
+
 
 class SupportViewSet(ModelViewSet):
     queryset = Support.objects.order_by('id')
     serializer_class = SupportSerializer
     filter_fields = ('version', 'feature')
+
+    @detail_route()
+    def version(self, request, pk=None):
+        obj = self.get_object()
+        related_view = VersionViewSet.as_view({'get': 'retrieve'})
+        return related_view(request, pk=obj.version_id)
+
+    @detail_route()
+    def feature(self, request, pk=None):
+        obj = self.get_object()
+        related_view = FeatureViewSet.as_view({'get': 'retrieve'})
+        return related_view(request, pk=obj.feature_id)
 
 
 class VersionViewSet(ModelViewSet):
@@ -131,6 +171,16 @@ class VersionViewSet(ModelViewSet):
     serializer_class = VersionSerializer
     filter_fields = ('browser', 'browser__slug', 'version', 'status')
 
+    @detail_route()
+    def browser(self, request, pk=None):
+        obj = self.get_object()
+        related_view = BrowserViewSet.as_view({'get': 'retrieve'})
+        return related_view(request, pk=obj.browser_id)
+
+    @detail_route()
+    def supports(self, request, pk=None):
+        related_view = SupportViewSet.as_view({'get': 'list'})
+        return related_view(request, apply_filter={'version': pk})
 
 #
 # Change control viewsets

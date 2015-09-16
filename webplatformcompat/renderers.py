@@ -650,9 +650,14 @@ class JsonApiV10Renderer(JSONRenderer):
                     resource_type = link_type
                 else:
                     relationship = OrderedDict()
+                    if link_data['collection']:
+                        endpoint = link_type
+                    else:
+                        endpoint = link_data.get(
+                            'pattern_name', link_type[:-1])
                     relationship['links'] = OrderedDict((
-                        ('self', path + '/relationships/' + link_type),
-                        ('related', path + '/' + link_type),
+                        ('self', path + '/relationships/' + endpoint),
+                        ('related', path + '/' + endpoint),
                     ))
                     if link_data['collection']:
                         relationship['data'] = [

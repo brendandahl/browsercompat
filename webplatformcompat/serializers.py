@@ -408,6 +408,7 @@ class SpecificationSerializer(HistoricalModelSerializer):
             'maturity': {
                 'link': {
                     'type': 'maturities',
+                    'pattern_name': 'maturity',
                     'collection': False,
                 },
             },
@@ -503,7 +504,7 @@ class VersionSerializer(HistoricalModelSerializer):
             'supports': {
                 'archive': 'omit',
                 "link": {
-                    "type": "versions",
+                    "type": "supports",
                     "collection": True,
                 },
             },
