@@ -599,9 +599,21 @@ class JsonApiV10Renderer(JSONRenderer):
                 # Paginated object
                 converted = self.convert_paginated(
                     data, renderer_context, path)
+            elif request.method == 'OPTIONS':
+                converted = {'meta': data}
             else:
-                # Errors
-                converted = data
+                try:
+                    if isinstance(data, list) and 'detail' in data[0]:
+                        error_list = data
+                    elif 'detail' in data:
+                        error_list = [data]
+                except TypeError:
+                    converted = data
+                else:
+                    response = renderer_context['response']
+                    for error in error_list:
+                        error['status'] = str(response.status_code)
+                    converted = {'errors': error_list}
         else:
             # Already-aware single object
             converted = self.convert_aware(data, renderer_context, path)

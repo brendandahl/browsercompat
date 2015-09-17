@@ -31,7 +31,7 @@ class TestJsonApiRC2Renderers(TestCase):
         response = self.client.options(
             url, HTTP_ACCEPT="application/vnd.api+json")
         self.assertEqual(200, response.status_code, response.content)
-        expected_response = {
+        expected_content = {
             'meta': {
                 'name': 'Browser',
                 'description': '',
@@ -40,7 +40,8 @@ class TestJsonApiRC2Renderers(TestCase):
                     'application/vnd.api+json',
                     'application/x-www-form-urlencoded',
                     'multipart/form-data']}}
-        self.assertEqual(expected_response, loads(response.content))
+        content = loads(response.content.decode('utf8'))
+        self.assertEqual(expected_content, content)
 
     def test_parser_error(self):
         data = "{'people': {'name': 'Jason Api'}}"  # Bad JSON, wrong quotes
@@ -50,7 +51,7 @@ class TestJsonApiRC2Renderers(TestCase):
             content_type="application/vnd.api+json")
 
         self.assertEqual(400, response.status_code, response.content)
-        results = {
+        expected_content = {
             "errors": [{
                 "status": "400",
                 "detail": (
@@ -58,4 +59,5 @@ class TestJsonApiRC2Renderers(TestCase):
                     " double quotes: line 1 column 2 (char 1)"),
             }]
         }
-        self.assertEqual(results, loads(response.content))
+        content = loads(response.content.decode('utf8'))
+        self.assertEqual(expected_content, content)
