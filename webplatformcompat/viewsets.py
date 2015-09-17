@@ -58,16 +58,8 @@ class CachedViewMixin(BaseCacheViewMixin):
         instance.delete()
 
 
-class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
-    renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
-    parser_classes = (JsonApiParser, FormParser, MultiPartParser)
-
-    def get_renderer_context(self):
-        renderer_context = super(ModelViewSet, self).get_renderer_context()
-        if hasattr(self, 'override_path'):
-            renderer_context['override_path'] = self.override_path
-        return renderer_context
-
+class RelatedActionMixin(object):
+    """Add related actions used in JSON API v1.0"""
     def related_list(self, request, pk, viewset, related_name):
         """Return a list of related items."""
         related_view = viewset.as_view({'get': 'list'})
@@ -82,7 +74,19 @@ class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
         return related_view(request, pk=related_id)
 
 
-class ReadOnlyModelViewSet(BaseROModelViewSet):
+class ModelViewSet(
+        PartialPutMixin, CachedViewMixin, RelatedActionMixin, BaseModelViewSet):
+    renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
+    parser_classes = (JsonApiParser, FormParser, MultiPartParser)
+
+    def get_renderer_context(self):
+        renderer_context = super(ModelViewSet, self).get_renderer_context()
+        if hasattr(self, 'override_path'):
+            renderer_context['override_path'] = self.override_path
+        return renderer_context
+
+
+class ReadOnlyModelViewSet(RelatedActionMixin, BaseROModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
 
 
@@ -207,12 +211,19 @@ class ChangesetViewSet(ModelViewSet):
     queryset = Changeset.objects.order_by('id')
     serializer_class = ChangesetSerializer
 
+    @detail_route()
+    def user(self, request, pk=None):
+        return self.related_item(request, pk, UserViewSet, 'users', 'user_id')
+
 
 class UserViewSet(CachedViewMixin, ReadOnlyModelViewSet):
     queryset = User.objects.order_by('id')
     serializer_class = UserSerializer
     filter_fields = ('username',)
 
+    @detail_route()
+    def changesets(self, request, pk=None):
+        return self.related_list(request, pk, ChangesetViewSet, 'changesets')
 
 #
 # Historical object viewsets
