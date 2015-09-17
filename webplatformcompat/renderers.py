@@ -587,8 +587,10 @@ class JsonApiV10Renderer(JSONRenderer):
         """
         Convert native data to JSON API v1.0
         """
+        # Construct absolute URI for override path or request path (default)
         request = renderer_context['request']
-        path = request.build_absolute_uri()
+        override_path = renderer_context.get('override_path')
+        path = request.build_absolute_uri(override_path)
 
         if not hasattr(data, 'extra'):
             if hasattr(data, 'serializer'):

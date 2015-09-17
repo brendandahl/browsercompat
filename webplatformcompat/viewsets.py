@@ -62,6 +62,12 @@ class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
     parser_classes = (JsonApiParser, FormParser, MultiPartParser)
 
+    def get_renderer_context(self):
+        renderer_context = super(ModelViewSet, self).get_renderer_context()
+        if hasattr(self, 'override_path'):
+            renderer_context['override_path'] = self.override_path
+        return renderer_context
+
 
 class ReadOnlyModelViewSet(BaseROModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
@@ -133,6 +139,8 @@ class SectionViewSet(ModelViewSet):
     def specification(self, request, pk=None):
         obj = self.get_object()
         related_view = SpecificationViewSet.as_view({'get': 'retrieve'})
+        self.override_path = '/api/v2/specifications/{}'.format(
+            obj.specification_id)
         return related_view(request, pk=obj.specification_id)
 
 
@@ -145,6 +153,7 @@ class SpecificationViewSet(ModelViewSet):
     def maturity(self, request, pk=None):
         obj = self.get_object()
         related_view = MaturityViewSet.as_view({'get': 'retrieve'})
+        self.override_path = '/api/v2/maturities/{}'.format(obj.maturity_id)
         return related_view(request, pk=obj.maturity_id)
 
 
@@ -157,12 +166,14 @@ class SupportViewSet(ModelViewSet):
     def version(self, request, pk=None):
         obj = self.get_object()
         related_view = VersionViewSet.as_view({'get': 'retrieve'})
+        self.override_path = '/api/v2/versions/{}'.format(obj.version_id)
         return related_view(request, pk=obj.version_id)
 
     @detail_route()
     def feature(self, request, pk=None):
         obj = self.get_object()
         related_view = FeatureViewSet.as_view({'get': 'retrieve'})
+        self.override_path = '/api/v2/features/{}'.format(obj.feature_id)
         return related_view(request, pk=obj.feature_id)
 
 
@@ -175,7 +186,9 @@ class VersionViewSet(ModelViewSet):
     def browser(self, request, pk=None):
         obj = self.get_object()
         related_view = BrowserViewSet.as_view({'get': 'retrieve'})
-        return related_view(request, pk=obj.browser_id)
+        self.override_path = '/api/v2/browsers/{}'.format(obj.browser_id)
+        ret = related_view(request, pk=obj.browser_id)
+        return ret
 
     @detail_route()
     def supports(self, request, pk=None):
