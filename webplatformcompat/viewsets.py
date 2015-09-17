@@ -68,6 +68,11 @@ class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
             renderer_context['override_path'] = self.override_path
         return renderer_context
 
+    def related_list(self, request, pk, viewset, related_name):
+        """Return a list of related items."""
+        related_view = viewset.as_view({'get': 'list'})
+        return related_view(request, apply_filter={related_name: pk})
+
 
 class ReadOnlyModelViewSet(BaseROModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
@@ -91,8 +96,7 @@ class BrowserViewSet(ModelViewSet):
 
     @detail_route()
     def versions(self, request, pk=None):
-        related_view = VersionViewSet.as_view({'get': 'list'})
-        return related_view(request, apply_filter={'browser': pk})
+        return self.related_list(request, pk, VersionViewSet, 'browser')
 
 
 class FeatureViewSet(ModelViewSet):
@@ -110,13 +114,11 @@ class FeatureViewSet(ModelViewSet):
 
     @detail_route()
     def sections(self, request, pk=None):
-        related_view = SectionViewSet.as_view({'get': 'list'})
-        return related_view(request, apply_filter={'features': pk})
+        return self.related_list(request, pk, SectionViewSet, 'features')
 
     @detail_route()
     def supports(self, request, pk=None):
-        related_view = SupportViewSet.as_view({'get': 'list'})
-        return related_view(request, apply_filter={'feature': pk})
+        return self.related_list(request, pk, SupportViewSet, 'feature')
 
 
 class MaturityViewSet(ModelViewSet):
@@ -126,8 +128,7 @@ class MaturityViewSet(ModelViewSet):
 
     @detail_route()
     def specifications(self, request, pk=None):
-        related_view = SpecificationViewSet.as_view({'get': 'list'})
-        return related_view(request, apply_filter={'maturity': pk})
+        return self.related_list(request, pk, SpecificationViewSet, 'maturity')
 
 
 class SectionViewSet(ModelViewSet):
@@ -192,8 +193,7 @@ class VersionViewSet(ModelViewSet):
 
     @detail_route()
     def supports(self, request, pk=None):
-        related_view = SupportViewSet.as_view({'get': 'list'})
-        return related_view(request, apply_filter={'version': pk})
+        return self.related_list(request, pk, SupportViewSet, 'version')
 
 #
 # Change control viewsets
