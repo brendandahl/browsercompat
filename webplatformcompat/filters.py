@@ -37,3 +37,5 @@ class UnorderedDjangoFilterBackend(DjangoFilterBackend):
             query_params = request.query_params.dict()
             query_params.update(view.kwargs.get('apply_filter', {}))
             return filter_class(query_params, queryset=queryset).qs
+        else:
+            return queryset
