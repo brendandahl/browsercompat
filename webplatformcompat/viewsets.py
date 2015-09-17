@@ -73,6 +73,14 @@ class ModelViewSet(PartialPutMixin, CachedViewMixin, BaseModelViewSet):
         related_view = viewset.as_view({'get': 'list'})
         return related_view(request, apply_filter={related_name: pk})
 
+    def related_item(self, request, pk, viewset, pattern, id_name):
+        """Return a related item."""
+        obj = self.get_object()
+        related_view = viewset.as_view({'get': 'retrieve'})
+        related_id = getattr(obj, id_name)
+        self.override_path = '/api/v2/{}/{}'.format(pattern, related_id)
+        return related_view(request, pk=related_id)
+
 
 class ReadOnlyModelViewSet(BaseROModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
@@ -144,6 +152,11 @@ class SectionViewSet(ModelViewSet):
             obj.specification_id)
         return related_view(request, pk=obj.specification_id)
 
+    @detail_route()
+    def specification(self, request, pk=None):
+        return self.related_item(
+            request, pk, SpecificationViewSet, 'specifications',
+            'specification_id')
 
 class SpecificationViewSet(ModelViewSet):
     queryset = Specification.objects.order_by('id')
@@ -152,10 +165,8 @@ class SpecificationViewSet(ModelViewSet):
 
     @detail_route()
     def maturity(self, request, pk=None):
-        obj = self.get_object()
-        related_view = MaturityViewSet.as_view({'get': 'retrieve'})
-        self.override_path = '/api/v2/maturities/{}'.format(obj.maturity_id)
-        return related_view(request, pk=obj.maturity_id)
+        return self.related_item(
+            request, pk, MaturityViewSet, 'maturities', 'maturity_id')
 
 
 class SupportViewSet(ModelViewSet):
@@ -165,17 +176,13 @@ class SupportViewSet(ModelViewSet):
 
     @detail_route()
     def version(self, request, pk=None):
-        obj = self.get_object()
-        related_view = VersionViewSet.as_view({'get': 'retrieve'})
-        self.override_path = '/api/v2/versions/{}'.format(obj.version_id)
-        return related_view(request, pk=obj.version_id)
+        return self.related_item(
+            request, pk, VersionViewSet, 'versions', 'version_id')
 
     @detail_route()
     def feature(self, request, pk=None):
-        obj = self.get_object()
-        related_view = FeatureViewSet.as_view({'get': 'retrieve'})
-        self.override_path = '/api/v2/features/{}'.format(obj.feature_id)
-        return related_view(request, pk=obj.feature_id)
+        return self.related_item(
+            request, pk, FeatureViewSet, 'features', 'feature_id')
 
 
 class VersionViewSet(ModelViewSet):
@@ -185,11 +192,8 @@ class VersionViewSet(ModelViewSet):
 
     @detail_route()
     def browser(self, request, pk=None):
-        obj = self.get_object()
-        related_view = BrowserViewSet.as_view({'get': 'retrieve'})
-        self.override_path = '/api/v2/browsers/{}'.format(obj.browser_id)
-        ret = related_view(request, pk=obj.browser_id)
-        return ret
+        return self.related_item(
+            request, pk, BrowserViewSet, 'browsers', 'browser_id')
 
     @detail_route()
     def supports(self, request, pk=None):
