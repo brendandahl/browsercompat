@@ -732,15 +732,17 @@ class JsonApiV10Renderer(JSONRenderer):
             item_data.update(converted['data'])
             item_list.append(item_data)
 
-        out = OrderedDict()
-        links = OrderedDict((
-            ('self', path),
-            ('next', data.get('next', None)),
-            ('prev', data.get('previous', None)),
+        return OrderedDict((
+            ('links', OrderedDict((
+                ('self', path),
+                ('next', data.get('next', None)),
+                ('prev', data.get('previous', None)),
+            ))),
+            ('meta', OrderedDict((
+                ('count', data['count']),
+            ))),
+            ('data', item_list),
         ))
-        out['links'] = links
-        out['data'] = item_list
-        return out
 
 
 class JsonApiRC2TemplateHTMLRenderer(TemplateHTMLRenderer):
