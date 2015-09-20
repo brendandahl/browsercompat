@@ -285,6 +285,7 @@ class MaturitySerializer(HistoricalModelSerializer):
                 'archive': 'omit',
                 'link': {
                     'type': 'historical_maturities',
+                    'pattern_name': 'historical_maturity',
                     'collection': False,
                 },
                 'writable': 'update_only',

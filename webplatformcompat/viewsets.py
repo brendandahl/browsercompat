@@ -68,8 +68,19 @@ class RelatedActionMixin(object):
     def related_item(self, request, pk, viewset, pattern, id_name):
         """Return a related item."""
         obj = self.get_object()
-        related_view = viewset.as_view({'get': 'retrieve'})
         related_id = getattr(obj, id_name)
+        return self.related_generic_item(
+            request, pk, viewset, pattern, related_id)
+
+    def current_historical_item(self, request, pk, viewset, pattern):
+        obj = self.get_object()
+        related_id = getattr(obj, 'history').latest().id
+        return self.related_generic_item(
+            request, pk, viewset, pattern, related_id)
+
+    def related_generic_item(self, request, pk, viewset, pattern, related_id):
+        """Return a related item."""
+        related_view = viewset.as_view({'get': 'retrieve'})
         self.override_path = '/api/v2/{}/{}'.format(pattern, related_id)
         return related_view(request, pk=related_id)
 
@@ -110,6 +121,16 @@ class BrowserViewSet(ModelViewSet):
     def versions(self, request, pk=None):
         return self.related_list(request, pk, VersionViewSet, 'browser')
 
+    @detail_route()
+    def historical_browsers(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalBrowserViewSet, 'id')
+
+    @detail_route()
+    def historical_browser(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalBrowserViewSet, 'historicalbrowsers')
+
 
 class FeatureViewSet(ModelViewSet):
     queryset = Feature.objects.order_by('id')
@@ -132,6 +153,16 @@ class FeatureViewSet(ModelViewSet):
     def supports(self, request, pk=None):
         return self.related_list(request, pk, SupportViewSet, 'feature')
 
+    @detail_route()
+    def historical_features(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalFeatureViewSet, 'id')
+
+    @detail_route()
+    def historical_feature(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalFeatureViewSet, 'historicalfeatures')
+
 
 class MaturityViewSet(ModelViewSet):
     queryset = Maturity.objects.order_by('id')
@@ -141,6 +172,16 @@ class MaturityViewSet(ModelViewSet):
     @detail_route()
     def specifications(self, request, pk=None):
         return self.related_list(request, pk, SpecificationViewSet, 'maturity')
+
+    @detail_route()
+    def historical_maturities(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalMaturityViewSet, 'id')
+
+    @detail_route()
+    def historical_maturity(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalMaturityViewSet, 'historicalmaturities')
 
 
 class SectionViewSet(ModelViewSet):
@@ -162,6 +203,16 @@ class SectionViewSet(ModelViewSet):
             request, pk, SpecificationViewSet, 'specifications',
             'specification_id')
 
+    @detail_route()
+    def historical_sections(self, request, pk=None):
+        return self.related_list(request, pk, HistoricalSectionViewSet, 'id')
+
+    @detail_route()
+    def historical_section(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalSectionViewSet, 'historicalsections')
+
+
 class SpecificationViewSet(ModelViewSet):
     queryset = Specification.objects.order_by('id')
     serializer_class = SpecificationSerializer
@@ -171,6 +222,15 @@ class SpecificationViewSet(ModelViewSet):
     def maturity(self, request, pk=None):
         return self.related_item(
             request, pk, MaturityViewSet, 'maturities', 'maturity_id')
+
+    @detail_route()
+    def historical_specifications(self, request, pk=None):
+        return self.related_list(request, pk, HistoricalSpecificationViewSet, 'id')
+
+    @detail_route()
+    def historical_specification(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalSpecificationViewSet, 'historicalspecifications')
 
 
 class SupportViewSet(ModelViewSet):
@@ -188,6 +248,15 @@ class SupportViewSet(ModelViewSet):
         return self.related_item(
             request, pk, FeatureViewSet, 'features', 'feature_id')
 
+    @detail_route()
+    def historical_supports(self, request, pk=None):
+        return self.related_list(request, pk, HistoricalSupportViewSet, 'id')
+
+    @detail_route()
+    def historical_support(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalSupportViewSet, 'historicalsupport')
+
 
 class VersionViewSet(ModelViewSet):
     queryset = Version.objects.order_by('id')
@@ -203,6 +272,16 @@ class VersionViewSet(ModelViewSet):
     def supports(self, request, pk=None):
         return self.related_list(request, pk, SupportViewSet, 'version')
 
+    @detail_route()
+    def historical_versions(self, request, pk=None):
+        return self.related_list(request, pk, HistoricalVersionViewSet, 'id')
+
+    @detail_route()
+    def historical_version(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalVersionViewSet, 'historicalversion')
+
+
 #
 # Change control viewsets
 #
@@ -214,6 +293,41 @@ class ChangesetViewSet(ModelViewSet):
     @detail_route()
     def user(self, request, pk=None):
         return self.related_item(request, pk, UserViewSet, 'users', 'user_id')
+
+    @detail_route()
+    def historical_browsers(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalBrowserViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_features(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalFeatureViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_maturities(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalMaturityViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_sections(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalSectionViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_specifications(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalSpecificationViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_supports(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalSupportViewSet, 'changeset_id')
+
+    @detail_route()
+    def historical_versions(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalVersionViewSet, 'changeset_id')
 
 
 class UserViewSet(CachedViewMixin, ReadOnlyModelViewSet):
@@ -302,7 +416,7 @@ class HistoricalSupportViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
             request, pk, SupportViewSet, 'supports', 'id')
 
 
-class HistoricalVersionViewSet(ReadOnlyModelViewSet):
+class HistoricalVersionViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Version.history.model.objects.order_by('id')
     serializer_class = HistoricalVersionSerializer
     filter_fields = ('id',)
