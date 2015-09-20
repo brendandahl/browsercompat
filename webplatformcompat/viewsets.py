@@ -73,17 +73,17 @@ class RelatedActionMixin(object):
         self.override_path = '/api/v2/{}/{}'.format(pattern, related_id)
         return related_view(request, pk=related_id)
 
+    def get_renderer_context(self):
+        renderer_context = super(RelatedActionMixin, self).get_renderer_context()
+        if hasattr(self, 'override_path'):
+            renderer_context['override_path'] = self.override_path
+        return renderer_context
+
 
 class ModelViewSet(
         PartialPutMixin, CachedViewMixin, RelatedActionMixin, BaseModelViewSet):
     renderer_classes = (JsonApiV10Renderer, BrowsableAPIRenderer)
     parser_classes = (JsonApiParser, FormParser, MultiPartParser)
-
-    def get_renderer_context(self):
-        renderer_context = super(ModelViewSet, self).get_renderer_context()
-        if hasattr(self, 'override_path'):
-            renderer_context['override_path'] = self.override_path
-        return renderer_context
 
 
 class ReadOnlyModelViewSet(RelatedActionMixin, BaseROModelViewSet):
@@ -229,40 +229,77 @@ class UserViewSet(CachedViewMixin, ReadOnlyModelViewSet):
 # Historical object viewsets
 #
 
-class HistoricalBrowserViewSet(ReadOnlyModelViewSet):
+class RelatedChangesetMixin(object):
+    @detail_route()
+    def changeset(self, request, pk=None):
+        return self.related_item(
+            request, pk, ChangesetViewSet, 'changesets', 'history_changeset_id')
+
+
+class HistoricalBrowserViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Browser.history.model.objects.order_by('id')
     serializer_class = HistoricalBrowserSerializer
     filter_fields = ('id', 'slug')
 
+    @detail_route()
+    def browser(self, request, pk=None):
+        return self.related_item(
+            request, pk, BrowserViewSet, 'browsers', 'id')
 
-class HistoricalFeatureViewSet(ReadOnlyModelViewSet):
+
+class HistoricalFeatureViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Feature.history.model.objects.order_by('id')
     serializer_class = HistoricalFeatureSerializer
     filter_fields = ('id', 'slug')
 
+    @detail_route()
+    def feature(self, request, pk=None):
+        return self.related_item(
+            request, pk, FeatureViewSet, 'features', 'id')
 
-class HistoricalMaturityViewSet(ReadOnlyModelViewSet):
+
+class HistoricalMaturityViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Maturity.history.model.objects.order_by('id')
     serializer_class = HistoricalMaturitySerializer
     filter_fields = ('id', 'slug')
 
+    @detail_route()
+    def maturity(self, request, pk=None):
+        return self.related_item(
+            request, pk, MaturityViewSet, 'maturities', 'id')
 
-class HistoricalSectionViewSet(ReadOnlyModelViewSet):
+
+class HistoricalSectionViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Section.history.model.objects.order_by('id')
     serializer_class = HistoricalSectionSerializer
     filter_fields = ('id',)
 
+    @detail_route()
+    def section(self, request, pk=None):
+        return self.related_item(
+            request, pk, SectionViewSet, 'sections', 'id')
 
-class HistoricalSpecificationViewSet(ReadOnlyModelViewSet):
+
+class HistoricalSpecificationViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Specification.history.model.objects.order_by('id')
     serializer_class = HistoricalSpecificationSerializer
     filter_fields = ('id', 'slug', 'mdn_key')
 
+    @detail_route()
+    def specification(self, request, pk=None):
+        return self.related_item(
+            request, pk, SpecificationViewSet, 'specifications', 'id')
 
-class HistoricalSupportViewSet(ReadOnlyModelViewSet):
+
+class HistoricalSupportViewSet(RelatedChangesetMixin, ReadOnlyModelViewSet):
     queryset = Support.history.model.objects.order_by('id')
     serializer_class = HistoricalSupportSerializer
     filter_fields = ('id',)
+
+    @detail_route()
+    def support(self, request, pk=None):
+        return self.related_item(
+            request, pk, SupportViewSet, 'supports', 'id')
 
 
 class HistoricalVersionViewSet(ReadOnlyModelViewSet):
@@ -270,6 +307,10 @@ class HistoricalVersionViewSet(ReadOnlyModelViewSet):
     serializer_class = HistoricalVersionSerializer
     filter_fields = ('id',)
 
+    @detail_route()
+    def version(self, request, pk=None):
+        return self.related_item(
+            request, pk, VersionViewSet, 'versions', 'id')
 
 #
 # Views

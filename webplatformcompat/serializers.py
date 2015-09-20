@@ -346,12 +346,6 @@ class SectionSerializer(HistoricalModelSerializer):
                     'collection': False,
                 },
             },
-            'features': {
-                'link': {
-                    'type': 'features',
-                    'collection': True,
-                },
-            },
         }
 
 
@@ -389,6 +383,10 @@ class SpecificationSerializer(HistoricalModelSerializer):
             },
             'sections': {
                 'archive': 'omit',
+                'link': {
+                    'type': 'sections',
+                    'collection': True,
+                },
             },
             'history_current': {
                 'archive': 'omit',
@@ -412,12 +410,6 @@ class SpecificationSerializer(HistoricalModelSerializer):
                     'collection': False,
                 },
             },
-            'sections': {
-                'link': {
-                    'type': 'sections',
-                    'collection': True,
-                }
-            }
         }
 
 
@@ -821,12 +813,27 @@ class HistoricalMaturitySerializer(HistoricalObjectSerializer):
         pass
 
     maturity = HistoricalObjectField()
-    maturities = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Maturity.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'maturity', 'maturities')
+            'maturity', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_maturities',
+                    'pattern_name': 'historicalmaturity'
+                },
+            },
+            'maturity': {
+                'link': {
+                    'type': 'maturities',
+                    'pattern_name': 'maturity',
+                    'collection': False,
+                },
+            },
+        }
 
 
 class HistoricalSectionSerializer(HistoricalObjectSerializer):
@@ -836,12 +843,27 @@ class HistoricalSectionSerializer(HistoricalObjectSerializer):
             archive_link_fields = ('specification',)
 
     section = HistoricalObjectField()
-    sections = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Section.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'section', 'sections')
+            'section', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_sections',
+                    'pattern_name': 'historicalsection'
+                },
+            },
+            'section': {
+                'link': {
+                    'type': 'sections',
+                    'collection': False,
+                },
+            },
+        }
+
 
 
 class HistoricalSpecificationSerializer(HistoricalObjectSerializer):
@@ -851,12 +873,26 @@ class HistoricalSpecificationSerializer(HistoricalObjectSerializer):
             archive_link_fields = ('maturity',)
 
     specification = HistoricalObjectField()
-    specifications = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Specification.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'specification', 'specifications')
+            'specification', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_specifications',
+                    'pattern_name': 'historicalspecification'
+                },
+            },
+            'specification': {
+                'link': {
+                    'type': 'specifications',
+                    'collection': False,
+                },
+            },
+        }
 
 
 class HistoricalSupportSerializer(HistoricalObjectSerializer):
@@ -866,29 +902,52 @@ class HistoricalSupportSerializer(HistoricalObjectSerializer):
             archive_link_fields = ('version', 'feature')
 
     support = HistoricalObjectField()
-    supports = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Support.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'support', 'supports')
+            'support', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_supports',
+                    'pattern_name': 'historicalsupport'
+                },
+            },
+            'support': {
+                'link': {
+                    'type': 'supports',
+                    'collection': False,
+                },
+            },
+        }
 
 
 class HistoricalVersionSerializer(HistoricalObjectSerializer):
 
     class ArchivedObject(ArchiveMixin, VersionSerializer):
         class Meta(VersionSerializer.Meta):
-            fields = omit_some(
-                VersionSerializer.Meta.fields,
-                'supports', 'history_current', 'history')
-            read_only_fields = omit_some(
-                VersionSerializer.Meta.read_only_fields, 'supports')
             archive_link_fields = ('browser',)
 
     version = HistoricalObjectField()
-    versions = SerializerMethodField('get_archive')
+    archive_data = SerializerMethodField('get_archive')
 
     class Meta(HistoricalObjectSerializer.Meta):
         model = Version.history.model
         fields = HistoricalObjectSerializer.Meta.fields + (
-            'version', 'versions')
+            'version', 'archive_data')
+        archive_extra = {
+            'id': {
+                'link': {
+                    'type': 'historical_versions',
+                    'pattern_name': 'historicalversion'
+                },
+            },
+            'version': {
+                'link': {
+                    'type': 'versions',
+                    'collection': False,
+                },
+            },
+        }
