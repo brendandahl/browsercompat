@@ -648,9 +648,12 @@ class JsonApiV10Renderer(JSONRenderer):
         links = OrderedDict()
         resource_id = None
         resource_type = None
+        as_relationship = renderer_context.get('as_relationship')
 
         extra = data.extra
         for name, value in data.items():
+            if as_relationship and name != as_relationship:
+                continue
             field_data = extra.get(name, {})
             link_data = field_data.get('link')
             is_archive_of = field_data.get('is_archive_of')
@@ -663,7 +666,7 @@ class JsonApiV10Renderer(JSONRenderer):
                 else:
                     relationship = OrderedDict()
                     if link_data['collection']:
-                        endpoint = link_type
+                        endpoint = link_data.get('pattern_name', link_type)
                     else:
                         endpoint = link_data.get(
                             'pattern_name', link_type[:-1])
@@ -675,10 +678,15 @@ class JsonApiV10Renderer(JSONRenderer):
                         relationship['data'] = [
                             {'type': link_type, 'id': self.pk_to_text(pk)}
                             for pk in value]
+                    elif value is None:
+                        relationship['data'] = None
                     else:
                         relationship['data'] = {
                             'type': link_type, 'id': self.pk_to_text(value)}
-                    relationships[name] = relationship
+                    if as_relationship and name == as_relationship:
+                        return relationship
+                    else:
+                        relationships[name] = relationship
             elif is_archive_of:
                 is_archive_of().add_repr_extra(value)
                 value.update(value.pop('links', {}))
@@ -694,14 +702,17 @@ class JsonApiV10Renderer(JSONRenderer):
         out = OrderedDict()
         if links:
             out['links'] = links
-        out_data = OrderedDict((
-            ('type', resource_type),
-            ('id', resource_id),
-        ))
-        if attributes:
-            out_data['attributes'] = attributes
-        if relationships:
-            out_data['relationships'] = relationships
+        if resource_type and resource_id:
+            out_data = OrderedDict((
+                ('type', resource_type),
+                ('id', resource_id),
+            ))
+            if attributes:
+                out_data['attributes'] = attributes
+            if relationships:
+                out_data['relationships'] = relationships
+        else:
+            out_data = None
         out['data'] = out_data
         return out
 

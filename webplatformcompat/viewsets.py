@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from collections import OrderedDict
+
 from django.contrib.auth.models import User
 from django.http import Http404
 from rest_framework.decorators import detail_route
@@ -7,6 +9,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.mixins import UpdateModelMixin
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.renderers import BrowsableAPIRenderer
+from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet as BaseModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet as BaseROModelViewSet
 from rest_framework.response import Response
@@ -69,8 +72,20 @@ class RelatedActionMixin(object):
         """Return a related item."""
         obj = self.get_object()
         related_id = getattr(obj, id_name)
-        return self.related_generic_item(
-            request, pk, viewset, pattern, related_id)
+        if related_id is None:
+            data = OrderedDict((('id', None),))
+            data.extra = {
+                'id': {
+                    'link': {
+                        'type': pattern,
+                        'collection': False,
+                    },
+                },
+            }
+            return Response(data)
+        else:
+            return self.related_generic_item(
+                request, pk, viewset, pattern, related_id)
 
     def current_historical_item(self, request, pk, viewset, pattern):
         obj = self.get_object()
@@ -84,10 +99,17 @@ class RelatedActionMixin(object):
         self.override_path = '/api/v2/{}/{}'.format(pattern, related_id)
         return related_view(request, pk=related_id)
 
+    def relationships(self, request, pk, relationship, parent_name):
+        self.override_path = '/api/v2/{}/{}'.format(parent_name, pk)
+        self.as_relationship = relationship
+        return self.retrieve(request, pk)
+
     def get_renderer_context(self):
         renderer_context = super(RelatedActionMixin, self).get_renderer_context()
         if hasattr(self, 'override_path'):
             renderer_context['override_path'] = self.override_path
+        if hasattr(self, 'as_relationship'):
+            renderer_context['as_relationship'] = self.as_relationship
         return renderer_context
 
 
@@ -122,14 +144,26 @@ class BrowserViewSet(ModelViewSet):
         return self.related_list(request, pk, VersionViewSet, 'browser')
 
     @detail_route()
+    def historical_browser(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalBrowserViewSet, 'historicalbrowsers')
+
+    @detail_route()
     def historical_browsers(self, request, pk=None):
         return self.related_list(
             request, pk, HistoricalBrowserViewSet, 'id')
 
-    @detail_route()
-    def historical_browser(self, request, pk=None):
-        return self.current_historical_item(
-            request, pk, HistoricalBrowserViewSet, 'historicalbrowsers')
+    @detail_route(url_path='relationships/versions')
+    def relationships_versions(self, request, pk=None):
+        return self.relationships(request, pk, 'versions', 'browsers')
+
+    @detail_route(url_path='relationships/historical_browser')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'browsers')
+
+    @detail_route(url_path='relationships/historical_browsers')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'browsers')
 
 
 class FeatureViewSet(ModelViewSet):
@@ -154,14 +188,51 @@ class FeatureViewSet(ModelViewSet):
         return self.related_list(request, pk, SupportViewSet, 'feature')
 
     @detail_route()
-    def historical_features(self, request, pk=None):
-        return self.related_list(
-            request, pk, HistoricalFeatureViewSet, 'id')
+    def parent(self, request, pk=None):
+        return self.related_item(
+            request, pk, FeatureViewSet, 'features', 'parent_id')
+
+    @detail_route()
+    def children(self, request, pk=None):
+        return self.related_list(request, pk, FeatureViewSet, 'parent')
 
     @detail_route()
     def historical_feature(self, request, pk=None):
         return self.current_historical_item(
             request, pk, HistoricalFeatureViewSet, 'historicalfeatures')
+
+    @detail_route()
+    def historical_features(self, request, pk=None):
+        return self.related_list(
+            request, pk, HistoricalFeatureViewSet, 'id')
+
+    @detail_route(url_path='relationships/sections')
+    def relationships_sections(self, request, pk=None):
+        return self.relationships(request, pk, 'sections', 'features')
+
+    @detail_route(url_path='relationships/supports')
+    def relationships_supports(self, request, pk=None):
+        return self.relationships(request, pk, 'supports', 'features')
+
+    @detail_route(url_path='relationships/parent')
+    def relationships_parent(self, request, pk=None):
+        return self.relationships(request, pk, 'parent', 'features')
+
+    @detail_route(url_path='relationships/children')
+    def relationships_children(self, request, pk=None):
+        return self.relationships(request, pk, 'children', 'features')
+
+    @detail_route(url_path='relationships/parent')
+    def relationships_parent(self, request, pk=None):
+        return self.relationships(request, pk, 'parent', 'features')
+
+    @detail_route(url_path='relationships/historical_feature')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'features')
+
+    @detail_route(url_path='relationships/historical_features')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'features')
 
 
 class MaturityViewSet(ModelViewSet):
@@ -174,14 +245,26 @@ class MaturityViewSet(ModelViewSet):
         return self.related_list(request, pk, SpecificationViewSet, 'maturity')
 
     @detail_route()
+    def historical_maturity(self, request, pk=None):
+        return self.current_historical_item(
+            request, pk, HistoricalMaturityViewSet, 'historicalmaturities')
+
+    @detail_route()
     def historical_maturities(self, request, pk=None):
         return self.related_list(
             request, pk, HistoricalMaturityViewSet, 'id')
 
-    @detail_route()
-    def historical_maturity(self, request, pk=None):
-        return self.current_historical_item(
-            request, pk, HistoricalMaturityViewSet, 'historicalmaturities')
+    @detail_route(url_path='relationships/specifications')
+    def relationships_specifications(self, request, pk=None):
+        return self.relationships(request, pk, 'specifications', 'maturities')
+
+    @detail_route(url_path='relationships/historical_maturity')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'maturities')
+
+    @detail_route(url_path='relationships/historical_maturities')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'maturities')
 
 
 class SectionViewSet(ModelViewSet):
@@ -191,17 +274,13 @@ class SectionViewSet(ModelViewSet):
 
     @detail_route()
     def specification(self, request, pk=None):
-        obj = self.get_object()
-        related_view = SpecificationViewSet.as_view({'get': 'retrieve'})
-        self.override_path = '/api/v2/specifications/{}'.format(
-            obj.specification_id)
-        return related_view(request, pk=obj.specification_id)
-
-    @detail_route()
-    def specification(self, request, pk=None):
         return self.related_item(
             request, pk, SpecificationViewSet, 'specifications',
             'specification_id')
+
+    @detail_route()
+    def features(self, request, pk=None):
+        return self.related_list(request, pk, SpecificationViewSet, 'features')
 
     @detail_route()
     def historical_sections(self, request, pk=None):
@@ -211,6 +290,22 @@ class SectionViewSet(ModelViewSet):
     def historical_section(self, request, pk=None):
         return self.current_historical_item(
             request, pk, HistoricalSectionViewSet, 'historicalsections')
+
+    @detail_route(url_path='relationships/specification')
+    def relationships_specification(self, request, pk=None):
+        return self.relationships(request, pk, 'specification', 'sections')
+
+    @detail_route(url_path='relationships/features')
+    def relationships_features(self, request, pk=None):
+        return self.relationships(request, pk, 'features', 'sections')
+
+    @detail_route(url_path='relationships/historical_section')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'sections')
+
+    @detail_route(url_path='relationships/historical_sections')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'sections')
 
 
 class SpecificationViewSet(ModelViewSet):
@@ -224,6 +319,10 @@ class SpecificationViewSet(ModelViewSet):
             request, pk, MaturityViewSet, 'maturities', 'maturity_id')
 
     @detail_route()
+    def sections(self, request, pk=None):
+        return self.related_list(request, pk, SectionViewSet, 'specification_id')
+
+    @detail_route()
     def historical_specifications(self, request, pk=None):
         return self.related_list(request, pk, HistoricalSpecificationViewSet, 'id')
 
@@ -231,6 +330,22 @@ class SpecificationViewSet(ModelViewSet):
     def historical_specification(self, request, pk=None):
         return self.current_historical_item(
             request, pk, HistoricalSpecificationViewSet, 'historicalspecifications')
+
+    @detail_route(url_path='relationships/maturity')
+    def relationships_maturity(self, request, pk=None):
+        return self.relationships(request, pk, 'maturity', 'specifications')
+
+    @detail_route(url_path='relationships/sections')
+    def relationships_sections(self, request, pk=None):
+        return self.relationships(request, pk, 'sections', 'specifications')
+
+    @detail_route(url_path='relationships/historical_specification')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'specifications')
+
+    @detail_route(url_path='relationships/historical_specifications')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'specifications')
 
 
 class SupportViewSet(ModelViewSet):
@@ -257,6 +372,22 @@ class SupportViewSet(ModelViewSet):
         return self.current_historical_item(
             request, pk, HistoricalSupportViewSet, 'historicalsupport')
 
+    @detail_route(url_path='relationships/version')
+    def relationships_version(self, request, pk=None):
+        return self.relationships(request, pk, 'version', 'supports')
+
+    @detail_route(url_path='relationships/feature')
+    def relationships_feature(self, request, pk=None):
+        return self.relationships(request, pk, 'feature', 'supports')
+
+    @detail_route(url_path='relationships/historical_support')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'supports')
+
+    @detail_route(url_path='relationships/historical_supports')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'supports')
+
 
 class VersionViewSet(ModelViewSet):
     queryset = Version.objects.order_by('id')
@@ -280,6 +411,22 @@ class VersionViewSet(ModelViewSet):
     def historical_version(self, request, pk=None):
         return self.current_historical_item(
             request, pk, HistoricalVersionViewSet, 'historicalversion')
+
+    @detail_route(url_path='relationships/browser')
+    def relationships_browser(self, request, pk=None):
+        return self.relationships(request, pk, 'browser', 'versions')
+
+    @detail_route(url_path='relationships/supports')
+    def relationships_supports(self, request, pk=None):
+        return self.relationships(request, pk, 'supports', 'versions')
+
+    @detail_route(url_path='relationships/historical_version')
+    def relationships_current_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history_current', 'versions')
+
+    @detail_route(url_path='relationships/historical_versions')
+    def relationships_history(self, request, pk=None):
+        return self.relationships(request, pk, 'history', 'versions')
 
 
 #

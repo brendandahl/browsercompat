@@ -152,8 +152,8 @@ class BrowserSerializer(HistoricalModelSerializer):
     class Meta:
         model = Browser
         fields = (
-            'id', 'slug', 'name', 'note', 'history', 'history_current',
-            'versions')
+            'id', 'slug', 'name', 'note', 'versions', 'history_current',
+            'history')
         fields_extra = {
             'id': {
                 'link': {
@@ -242,17 +242,19 @@ class FeatureSerializer(HistoricalModelSerializer):
                     'collection': True,
                 },
             },
+            'parent': {
+                'link': {
+                    'type': 'features',
+                    'pattern_name': 'parent',
+                    'collection': False,
+                },
+            },
             'children': {
                 'archive': 'omit',
                 'link': {
                     'type': 'features',
+                    'pattern_name': 'children',
                     'collection': True,
-                },
-            },
-            'parent': {
-                'link': {
-                    'type': 'features',
-                    'collection': False,
                 },
             },
         }
