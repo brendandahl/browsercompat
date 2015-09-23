@@ -4,7 +4,6 @@ from django.contrib.auth.models import User
 from django.http import Http404
 from rest_framework.mixins import UpdateModelMixin
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.renderers import BrowsableAPIRenderer
 from rest_framework.viewsets import ModelViewSet as BaseModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet as BaseROModelViewSet
 
@@ -16,7 +15,8 @@ from .mixins import PartialPutMixin
 from .models import (
     Browser, Feature, Maturity, Section, Specification, Support, Version)
 from .parsers import JsonApiParser
-from .renderers import JsonApiRenderer, JsonApiTemplateHTMLRenderer
+from .renderers import (
+    BrowsableAPIRenderer, JsonApiRenderer, JsonApiTemplateHTMLRenderer)
 from .serializers import (
     BrowserSerializer, FeatureSerializer, MaturitySerializer,
     SectionSerializer, SpecificationSerializer, SupportSerializer,
